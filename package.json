@@ -1,0 +1,21 @@
+{
+  "name": "english-learning-exam-platform",
+  "version": "1.0.0",
+  "description": "Hệ thống học tập và thi online môn Tiếng Anh cho THCS & THPT",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run teacher\" \"npm run student\"",
+    "server": "cd server && npm run dev",
+    "teacher": "cd teacher-web && npm run dev",
+    "student": "cd student-web && npm run dev",
+    "build": "cd server && npm run build && cd ../teacher-web && npm run build && cd ../student-web && npm run build",
+    "install-all": "npm install && cd server && npm install && cd ../teacher-web && npm install && cd ../student-web && npm install"
+  },
+  "keywords": ["education", "exam", "english", "learning"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
+
