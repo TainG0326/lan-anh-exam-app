@@ -1,10 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
-import { CookieRequest } from '../types/express.js';
 
 const EXAM_SECRET_KEY = process.env.EXAM_SECRET_KEY || 'your-secret-key-change-in-production';
 
-export interface BekRequest extends CookieRequest {
+export interface BekRequest extends Request {
   examId?: string;
   bekHash?: string;
 }

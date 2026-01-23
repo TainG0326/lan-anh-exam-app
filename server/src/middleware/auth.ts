@@ -2,9 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { UserDB, User } from '../database/User.js';
 import { generateToken } from '../utils/generateToken.js';
-import { CookieRequest } from '../types/express.js';
 
-export interface AuthRequest extends CookieRequest {
+export interface AuthRequest extends Request {
   user?: User;
 }
 
@@ -17,8 +16,8 @@ export const protect = async (
     let token: string | undefined;
 
     // Priority 1: Check HttpOnly Cookie (preferred for security)
-    if (req.cookies && (req.cookies as any).accessToken) {
-      token = (req.cookies as any).accessToken;
+    if ((req as any).cookies && (req as any).cookies.accessToken) {
+      token = (req as any).cookies.accessToken;
     }
     // Priority 2: Check Authorization header (for backward compatibility)
     else if (
@@ -54,9 +53,9 @@ export const protect = async (
     next();
   } catch (error: any) {
     // If token expired, try refresh token
-    if (error.name === 'TokenExpiredError' && (req.cookies as any)?.refreshToken) {
+    if (error.name === 'TokenExpiredError' && (req as any).cookies?.refreshToken) {
       try {
-        const refreshToken = (req.cookies as any).refreshToken;
+        const refreshToken = (req as any).cookies.refreshToken;
         const decoded = jwt.verify(
           refreshToken,
           process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'secret'
