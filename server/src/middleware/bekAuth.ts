@@ -1,9 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import { CookieRequest } from '../types/express.js';
 
 const EXAM_SECRET_KEY = process.env.EXAM_SECRET_KEY || 'your-secret-key-change-in-production';
 
-export interface BekRequest extends Request {
+export interface BekRequest extends CookieRequest {
   examId?: string;
   bekHash?: string;
 }
@@ -16,14 +17,14 @@ export interface BekRequest extends Request {
 export const bekAuth = (req: BekRequest, res: Response, next: NextFunction) => {
   // Skip BEK validation for non-exam routes
   const examRoutes = ['/api/exams/start', '/api/exams/submit-answer', '/api/exams/submit', '/api/exams/violation'];
-  const isExamRoute = examRoutes.some(route => req.path.startsWith(route));
+  const isExamRoute = examRoutes.some(route => (req as any).path.startsWith(route));
   
   if (!isExamRoute) {
     return next();
   }
 
   // Get exam ID from request body or params
-  const examId = req.body?.examId || req.params?.examId || req.query?.examId;
+  const examId = (req as any).body?.examId || (req as any).params?.examId || (req as any).query?.examId;
   
   if (!examId) {
     return res.status(400).json({
@@ -46,7 +47,7 @@ export const bekAuth = (req: BekRequest, res: Response, next: NextFunction) => {
   }
 
   // Generate expected hash
-  const url = req.originalUrl || req.url;
+  const url = req.originalUrl || (req as any).url;
   const hashInput = `${url}${EXAM_SECRET_KEY}${examId}`;
   const expectedHash = crypto.createHash('sha256').update(hashInput).digest('hex');
 
@@ -68,8 +69,8 @@ export const bekAuth = (req: BekRequest, res: Response, next: NextFunction) => {
   }
 
   // Store exam ID and hash in request for later use
-  req.examId = examId;
-  req.bekHash = clientHash;
+  (req as any).examId = examId;
+  (req as any).bekHash = clientHash;
 
   next();
 };
@@ -81,6 +82,3 @@ export const generateBEKHash = (url: string, examId: string): string => {
   const hashInput = `${url}${EXAM_SECRET_KEY}${examId}`;
   return crypto.createHash('sha256').update(hashInput).digest('hex');
 };
-
-
-

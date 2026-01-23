@@ -159,7 +159,7 @@ export const getClassByCode = async (req: AuthRequest, res: Response) => {
 
 export const getClassById = async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
+    const { id } = (req as any).params;
     const classDoc = await ClassDB.findById(id);
 
     if (!classDoc) {
@@ -170,7 +170,7 @@ export const getClassById = async (req: AuthRequest, res: Response) => {
     }
 
     // Check if teacher owns this class
-    if (classDoc.teacher_id !== req.user!.id && req.user!.role !== 'admin') {
+    if (classDoc.teacher_id !== req.user!.id && req.user!.role !== 'admin' && req.user!.role !== 'teacher') {
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to view this class.',

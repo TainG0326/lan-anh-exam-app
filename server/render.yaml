@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: english-exam-api
+    env: node
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: SUPABASE_URL
+        value: https://hvophbiqtpffokpienki.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2b3BoYmlxdHBmZm9rcGllbmtpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgwNjg0ODYsImV4cCI6MjA4MzY0NDQ4Nn0.y7U3MrJVIjYy_VlD8YR3eQdtJ3-HYybXl3PRJdOvICk
+      - key: JWT_SECRET
+        value: my-super-secret-jwt-key-2026-english-exam
+
