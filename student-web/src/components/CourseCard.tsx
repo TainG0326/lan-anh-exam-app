@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, Clock } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 
 interface CourseCardProps {
   id: string;

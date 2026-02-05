@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getAssignments } from '../services/assignmentService';
-import { FileText, Clock, Calendar, CheckCircle } from 'lucide-react';
+import { FileText, Calendar, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format, isValid } from 'date-fns';
 

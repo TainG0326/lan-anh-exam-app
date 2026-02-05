@@ -41,7 +41,8 @@ export default function TakeExam() {
 
   const loadExam = async () => {
     try {
-      const examData = await getExamByCode(examCode!);
+      const examId = examCode || '';
+      const examData = await getExamByCode(examId);
       setExam(examData);
       
       // Start exam

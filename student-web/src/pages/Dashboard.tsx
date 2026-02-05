@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { getExams } from '../services/examService';
 import { getAssignments } from '../services/assignmentService';
 import { useAuth } from '../context/AuthContext';
 import { 
   FileText, 
-  Clock, 
-  TrendingUp, 
-  BookOpen,
   FileEdit,
   ClipboardList,
   Headphones,
@@ -16,7 +13,6 @@ import {
   Timer,
   Calendar
 } from 'lucide-react';
-import toast from 'react-hot-toast';
 import { format, formatDistanceToNow } from 'date-fns';
 
 export default function Dashboard() {
@@ -24,7 +20,6 @@ export default function Dashboard() {
   const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [examCode, setExamCode] = useState('');
-  const navigate = useNavigate();
   const { loading: authLoading } = useAuth();
 
   useEffect(() => {

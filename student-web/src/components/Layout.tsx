@@ -1,18 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
-import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { logout } from '../services/authService';
 import { 
   LayoutDashboard, 
   FileText, 
-  BookOpen, 
   LogOut, 
   Menu, 
   X, 
   Users,
   Search,
   Bell,
-  Settings,
   GraduationCap,
   User
 } from 'lucide-react';
@@ -21,8 +19,6 @@ import Logo from './Logo';
 export default function Layout() {
   const { user } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -58,13 +54,6 @@ export default function Layout() {
     { path: '/exams', label: 'Exams', icon: FileText },
     { path: '/grades', label: 'Grades', icon: GraduationCap },
   ];
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      console.log('Search:', searchQuery);
-    }
-  };
 
   const notifications = [
     { id: 1, text: "New assignment available", time: "2m ago" },

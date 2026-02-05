@@ -3,9 +3,21 @@ import { Link } from 'react-router-dom';
 import { getExams } from '../services/examService';
 import { getAssignments } from '../services/assignmentService';
 import { getStudentAttempt } from '../services/examService';
-import { GraduationCap, FileText, TrendingUp, Award, Calendar, ArrowRight, CheckCircle, Clock } from 'lucide-react';
+import { GraduationCap, FileText, TrendingUp, Award, Calendar, ArrowRight, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format, isValid } from 'date-fns';
+
+interface Assignment {
+  id?: string;
+  _id?: string;
+  title: string;
+  submitted?: boolean;
+  submitted_at?: string;
+  submittedAt?: string;
+  score?: number;
+  totalPoints?: number;
+  dueDate?: string;
+}
 
 interface GradeItem {
   id: string;
@@ -77,7 +89,7 @@ export default function Grades() {
       }
 
       // Process assignments with scores
-      const gradedAssignments = assignments.filter((assignment) => {
+      const gradedAssignments = assignments.filter((assignment: Assignment) => {
         return assignment.submitted && assignment.score !== undefined;
       });
 

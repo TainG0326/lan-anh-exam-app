@@ -4,13 +4,11 @@
  * Runs entirely on client-side (no server cost)
  */
 
-import * as tf from '@tensorflow/tfjs';
 import * as blazeface from '@tensorflow-models/blazeface';
 
 let model: blazeface.BlazeFaceModel | null = null;
 let isMonitoring = false;
 let monitoringInterval: number | null = null;
-let lastFaceCount = 0;
 let faceDirectionHistory: Array<{ x: number; y: number; timestamp: number }> = [];
 let violationFlags: Array<{ type: string; timestamp: number; severity: number }> = [];
 
@@ -36,16 +34,26 @@ const detectFaces = async (video: HTMLVideoElement): Promise<blazeface.Normalize
   return predictions;
 };
 
+// Helper to convert landmarks to number[][]
+const getLandmarksAsArray = (landmarks: number[][] | undefined): number[][] => {
+  if (!landmarks) return [];
+  // If it's already an array of arrays, return it
+  if (Array.isArray(landmarks) && landmarks.length > 0 && Array.isArray(landmarks[0])) {
+    return landmarks as number[][];
+  }
+  return [];
+};
+
 // Calculate face direction (center point)
 const getFaceDirection = (face: blazeface.NormalizedFace): { x: number; y: number } => {
-  const landmarks = face.landmarks;
-  if (!landmarks || landmarks.length === 0) {
+  const landmarks = getLandmarksAsArray(face.landmarks);
+  if (landmarks.length === 0) {
     return { x: 0.5, y: 0.5 }; // Default center
   }
 
   // Calculate center from landmarks
-  const centerX = landmarks.reduce((sum, point) => sum + point[0], 0) / landmarks.length;
-  const centerY = landmarks.reduce((sum, point) => sum + point[1], 0) / landmarks.length;
+  const centerX = landmarks.reduce((sum, point) => sum + (point[0] || 0), 0) / landmarks.length;
+  const centerY = landmarks.reduce((sum, point) => sum + (point[1] || 0), 0) / landmarks.length;
 
   return { x: centerX, y: centerY };
 };
@@ -108,7 +116,7 @@ const checkViolations = (faces: blazeface.NormalizedFace[]): Array<{ type: strin
 export const startAIMonitoring = async (
   videoElement: HTMLVideoElement,
   onViolation: (violation: { type: string; severity: number }) => void,
-  examId: string
+  _examId: string
 ): Promise<void> => {
   if (isMonitoring) {
     console.warn('AI monitoring already started');
@@ -139,8 +147,6 @@ export const startAIMonitoring = async (
         // Send to backend for flagging (not force submit)
         onViolation(violation);
       });
-
-      lastFaceCount = faces.length;
     } catch (error) {
       console.error('AI monitoring error:', error);
     }
@@ -195,6 +201,3 @@ export const cleanupAIModel = async (): Promise<void> => {
     model = null;
   }
 };
-
-
-
