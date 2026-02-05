@@ -9,7 +9,6 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [studentId, setStudentId] = useState('');
   const [loading, setLoading] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -63,7 +62,6 @@ export default function Login() {
         password,
         name,
         role: 'student',
-        studentId: studentId || undefined,
       });
       console.log('Register: API response:', response);
 
@@ -252,21 +250,6 @@ export default function Login() {
                     placeholder="student@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-
-                <div className="relative group">
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1.5 ml-1" htmlFor="reg-studentId">
-                    Student ID <span className="text-gray-400 font-normal">(Optional)</span>
-                  </label>
-                  <input
-                    id="reg-studentId"
-                    name="studentId"
-                    type="text"
-                    className="block w-full px-4 py-3 bg-transparent border border-gray-300 dark:border-gray-600 rounded-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#5F8D78] focus:border-[#5F8D78] sm:text-sm transition-colors duration-200"
-                    placeholder="SV001"
-                    value={studentId}
-                    onChange={(e) => setStudentId(e.target.value)}
                   />
                 </div>
 
