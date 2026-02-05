@@ -8,8 +8,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tensorflow-models/blazeface": "^2.0.6",
-    "@tensorflow/tfjs": "^4.15.0",
+    "@tensorflow-models/blazeface": "*",
+    "@tensorflow/tfjs": "*",
     "axios": "^1.6.2",
     "crypto-js": "^4.2.0",
     "date-fns": "^3.0.6",
@@ -21,6 +21,7 @@
     "socket.io-client": "^4.6.1"
   },
   "devDependencies": {
+    "@types/crypto-js": "^4.2.1",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",
     "@vitejs/plugin-react": "^4.2.1",
