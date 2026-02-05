@@ -5,6 +5,7 @@
  */
 
 import * as blazeface from '@tensorflow-models/blazeface';
+import { Tensor2D } from '@tensorflow/tfjs';
 
 let model: blazeface.BlazeFaceModel | null = null;
 let isMonitoring = false;
@@ -35,11 +36,15 @@ const detectFaces = async (video: HTMLVideoElement): Promise<blazeface.Normalize
 };
 
 // Helper to convert landmarks to number[][]
-const getLandmarksAsArray = (landmarks: number[][] | undefined): number[][] => {
+const getLandmarksAsArray = (landmarks: number[][] | Tensor2D | undefined): number[][] => {
   if (!landmarks) return [];
   // If it's already an array of arrays, return it
   if (Array.isArray(landmarks) && landmarks.length > 0 && Array.isArray(landmarks[0])) {
     return landmarks as number[][];
+  }
+  // If it's a Tensor, convert to array
+  if (typeof landmarks === 'object' && typeof (landmarks as any).array === 'function') {
+    return (landmarks as Tensor2D).arraySync() as number[][];
   }
   return [];
 };

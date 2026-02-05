@@ -22,6 +22,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [examCode, setExamCode] = useState('');
   const { loading: authLoading } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Chờ auth load xong mới gọi API
