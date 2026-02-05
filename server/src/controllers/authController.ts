@@ -419,9 +419,11 @@ export const forgotPassword = async (req: Request, res: Response) => {
 
 export const resetPassword = async (req: Request, res: Response) => {
   try {
+    console.log('[OTP] Reset password request received:', { email: req.body.email, otp: req.body.otp });
     const { email, otp, newPassword } = req.body;
 
     if (!email || !otp || !newPassword) {
+      console.log('[OTP] Missing required fields');
       return res.status(400).json({
         success: false,
         message: 'Email, OTP, and new password are required.',
@@ -430,7 +432,10 @@ export const resetPassword = async (req: Request, res: Response) => {
 
     // Check OTP
     const storedOTP = otpStore.get(email);
+    console.log('[OTP] storedOTP:', storedOTP ? 'found' : 'not found');
+
     if (!storedOTP) {
+      console.log('[OTP] No OTP found for', email);
       return res.status(400).json({
         success: false,
         message: 'Invalid or expired OTP.',
@@ -438,6 +443,7 @@ export const resetPassword = async (req: Request, res: Response) => {
     }
 
     if (Date.now() > storedOTP.expiresAt) {
+      console.log('[OTP] OTP expired at', new Date(storedOTP.expiresAt).toISOString());
       otpStore.delete(email);
       return res.status(400).json({
         success: false,
@@ -446,33 +452,40 @@ export const resetPassword = async (req: Request, res: Response) => {
     }
 
     if (storedOTP.otp !== otp) {
+      console.log('[OTP] OTP mismatch:', { expected: storedOTP.otp, received: otp });
       return res.status(400).json({
         success: false,
         message: 'Invalid OTP.',
       });
     }
 
+    console.log('[OTP] OTP validated successfully');
+
     // Verify user exists
     const user = await UserDB.findByEmail(email);
     if (!user) {
+      console.log('[OTP] User not found for', email);
       return res.status(400).json({
         success: false,
         message: 'User not found.',
       });
     }
 
+    console.log('[OTP] User found, updating password...');
     // Hash new password and update
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     await UserDB.update(user.id, { password: hashedPassword });
 
     // Clear OTP
     otpStore.delete(email);
+    console.log('[OTP] Password reset successful for', email);
 
     res.json({
       success: true,
       message: 'Password has been reset successfully.',
     });
   } catch (error: any) {
+    console.error('[OTP] Reset password error:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to reset password.',
