@@ -193,6 +193,15 @@ export default function Login() {
                   Remember me
                 </label>
               </div>
+              <div className="text-sm">
+                <button
+                  type="button"
+                  onClick={() => navigate('/forgot-password')}
+                  className="font-medium text-[#5F8D78] hover:text-opacity-80 transition-colors"
+                >
+                  Forgot password?
+                </button>
+              </div>
             </div>
 
               <div>

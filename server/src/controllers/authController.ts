@@ -322,3 +322,123 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
     });
   }
 };
+
+// Store OTPs temporarily (in production, use Redis or database)
+const otpStore: Map<string, { otp: string; expiresAt: number }> = new Map();
+
+// Generate random 6-digit OTP
+const generateOTP = (): string => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+// Send OTP email (mock - in production, use nodemailer or email service)
+const sendOTPEmail = async (email: string, otp: string): Promise<boolean> => {
+  console.log(`[OTP] Sending OTP ${otp} to ${email}`);
+  // In production, implement actual email sending here
+  return true;
+};
+
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required.',
+      });
+    }
+
+    const user = await UserDB.findByEmail(email);
+    if (!user) {
+      // Don't reveal if user exists or not
+      return res.json({
+        success: true,
+        message: 'If an account exists with this email, an OTP will be sent.',
+      });
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+
+    // Store OTP
+    otpStore.set(email, { otp, expiresAt });
+
+    // Send OTP email
+    await sendOTPEmail(email, otp);
+
+    res.json({
+      success: true,
+      message: 'If an account exists with this email, an OTP will be sent.',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to process forgot password request.',
+    });
+  }
+};
+
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email, OTP, and new password are required.',
+      });
+    }
+
+    // Check OTP
+    const storedOTP = otpStore.get(email);
+    if (!storedOTP) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP.',
+      });
+    }
+
+    if (Date.now() > storedOTP.expiresAt) {
+      otpStore.delete(email);
+      return res.status(400).json({
+        success: false,
+        message: 'OTP has expired.',
+      });
+    }
+
+    if (storedOTP.otp !== otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid OTP.',
+      });
+    }
+
+    // Verify user exists
+    const user = await UserDB.findByEmail(email);
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'User not found.',
+      });
+    }
+
+    // Hash new password and update
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    await UserDB.update(user.id, { password: hashedPassword });
+
+    // Clear OTP
+    otpStore.delete(email);
+
+    res.json({
+      success: true,
+      message: 'Password has been reset successfully.',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to reset password.',
+    });
+  }
+};
