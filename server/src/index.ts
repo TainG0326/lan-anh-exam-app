@@ -64,6 +64,22 @@ app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', message: 'Server is running' });
 });
 
+// Root endpoint
+app.get('/', (req: Request, res: Response) => {
+  res.json({
+    name: 'English Exam API',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      auth: '/api/auth',
+      classes: '/api/classes',
+      assignments: '/api/assignments',
+      'question-parser': '/api/question-parser',
+      exams: '/api/exams',
+    },
+  });
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/classes', classRoutes);
