@@ -3,14 +3,10 @@ import crypto from 'crypto';
 
 const EXAM_SECRET_KEY = process.env.EXAM_SECRET_KEY || 'your-secret-key-change-in-production';
 
-// Extended Request interface with body, params, file
+// Extended Request interface with exam auth
 export interface BekRequest extends Request {
   examId?: string;
   bekHash?: string;
-  body: any;
-  params: any;
-  query: any;
-  originalUrl?: string;
 }
 
 /**

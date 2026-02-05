@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { UserDB, User } from '../database/User.js';
 import { generateToken } from '../utils/generateToken.js';
 
-// Extended Request interface with user
+// Extended Request interface with user and file (for multer)
 export interface AuthRequest extends Request {
   user?: User;
   file?: any;
