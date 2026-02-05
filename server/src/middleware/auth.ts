@@ -67,12 +67,13 @@ export const protect = async (
         if (user) {
           // Generate new access token
           const newAccessToken = generateToken(user.id);
+          const isProduction = process.env.NODE_ENV === 'production';
           
           // Set new access token cookie
           res.cookie('accessToken', newAccessToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            secure: isProduction,
+            sameSite: isProduction ? 'none' : 'lax',
             maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
           });
 

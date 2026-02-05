@@ -7,6 +7,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Allow sending credentials (cookies) cross-origin
 });
 
 // Flag để tránh redirect khi đang init auth

@@ -37,10 +37,11 @@ export const register = async (req: Request, res: Response) => {
     const refreshToken = generateRefreshToken(user.id);
 
     // Set HttpOnly cookies
+    const isProduction = process.env.NODE_ENV === 'production';
     const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict' as const,
+      secure: isProduction, // HTTPS only in production
+      sameSite: isProduction ? 'none' : 'lax' as const,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     };
 
@@ -94,10 +95,11 @@ export const login = async (req: Request, res: Response) => {
     const refreshToken = generateRefreshToken(user.id);
 
     // Set HttpOnly cookies
+    const isProduction = process.env.NODE_ENV === 'production';
     const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-      sameSite: 'strict' as const,
+      secure: isProduction, // HTTPS only in production
+      sameSite: isProduction ? 'none' : 'lax' as const,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     };
 
