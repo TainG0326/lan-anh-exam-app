@@ -8,35 +8,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: "#D4E95D", // Premium Lime Green
-        "primary-foreground": "#000000",
-        "primary-hover": "#C4D94D",
-        background: "#F8FAFC", // Primary app background
-        "background-light": "#FFFFFF", // Card background
-        border: "#E2E8F0", // Subtle borders
-        "text-primary": "#0F172A", // Navy for headings
-        "text-secondary": "#64748B", // Body text
-        "text-muted": "#94A3B8",
+        primary: "#5F8D78", // Muted sage/teal
+        secondary: "#DCE6E1", // Light sage/cream mix
+        "background-light": "#F9FBF9", // Very light cream/sage
+        "background-dark": "#1A2321", // Deep dark green/charcoal
+        "sage-light": "#E8F0EB",
+        "cream": "#FCFCF9",
       },
       fontFamily: {
+        serif: ['Playfair Display', 'serif'],
         sans: ['Inter', 'sans-serif'],
       },
       borderRadius: {
-        DEFAULT: "0.5rem",
-        'xl': '1rem',
-        '2xl': '1.5rem',
-        '3xl': '1.5rem', // 24px
-      },
-      boxShadow: {
-        'soft': '0 1px 2px 0 rgb(0 0 0 / 0.05)',
-      },
-      letterSpacing: {
-        'tight': '-0.025em',
-        'tighter': '-0.05em',
+        DEFAULT: "4px",
       },
     }
   },
   plugins: [],
 }
-
-
