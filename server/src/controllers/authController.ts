@@ -41,15 +41,15 @@ export const register = async (req: Request, res: Response) => {
     const isProduction = process.env.NODE_ENV === 'production';
     const cookieOptions = {
       httpOnly: true,
-      secure: isProduction, // HTTPS only in production
-      sameSite: isProduction ? 'none' : 'lax' as const,
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    };
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : ('lax' as const),
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    } as const;
 
     res.cookie('accessToken', accessToken, cookieOptions);
     res.cookie('refreshToken', refreshToken, {
       ...cookieOptions,
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
     res.status(201).json({
@@ -99,15 +99,15 @@ export const login = async (req: Request, res: Response) => {
     const isProduction = process.env.NODE_ENV === 'production';
     const cookieOptions = {
       httpOnly: true,
-      secure: isProduction, // HTTPS only in production
-      sameSite: isProduction ? 'none' : 'lax' as const,
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    };
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : ('lax' as const),
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    } as const;
 
     res.cookie('accessToken', accessToken, cookieOptions);
     res.cookie('refreshToken', refreshToken, {
       ...cookieOptions,
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
     // Also return token in response for backward compatibility (Electron can use it)
