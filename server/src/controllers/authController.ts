@@ -367,9 +367,11 @@ const sendOTPEmail = async (email: string, otp: string): Promise<boolean> => {
 
 export const forgotPassword = async (req: Request, res: Response) => {
   try {
+    console.log('[OTP] Forgot password request received for email:', req.body.email);
     const { email } = req.body;
 
     if (!email) {
+      console.log('[OTP] No email provided');
       return res.status(400).json({
         success: false,
         message: 'Email is required.',
@@ -377,8 +379,11 @@ export const forgotPassword = async (req: Request, res: Response) => {
     }
 
     const user = await UserDB.findByEmail(email);
+    console.log('[OTP] User found:', user ? 'yes' : 'no');
+
     if (!user) {
       // Don't reveal if user exists or not
+      console.log('[OTP] User not found, returning success response');
       return res.json({
         success: true,
         message: 'If an account exists with this email, an OTP will be sent.',
@@ -390,16 +395,21 @@ export const forgotPassword = async (req: Request, res: Response) => {
     const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
 
     // Store OTP
+    console.log('[OTP] Generated OTP for', email, ':', otp);
     otpStore.set(email, { otp, expiresAt });
+    console.log('[OTP] OTP stored, expires at', new Date(expiresAt).toISOString());
 
     // Send OTP email
+    console.log('[OTP] Calling sendOTPEmail...');
     await sendOTPEmail(email, otp);
+    console.log('[OTP] sendOTPEmail completed');
 
     res.json({
       success: true,
       message: 'If an account exists with this email, an OTP will be sent.',
     });
   } catch (error: any) {
+    console.error('[OTP] Forgot password error:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to process forgot password request.',
