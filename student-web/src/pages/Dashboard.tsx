@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { getExams } from '../services/examService';
 import { getAssignments } from '../services/assignmentService';
 import { useAuth } from '../context/AuthContext';
 import { 
   FileText, 
+  Clock,
   FileEdit,
   ClipboardList,
   Headphones,

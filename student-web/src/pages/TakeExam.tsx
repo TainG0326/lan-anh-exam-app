@@ -46,7 +46,7 @@ export default function TakeExam() {
       setExam(examData);
       
       // Start exam
-      const startData = await startExam(examData.id || examData._id);
+      const startData = await startExam((examData.id || examData._id) as string);
       setAttempt(startData.attempt);
       setAnswers(startData.attempt.answers || {});
     } catch (error: any) {

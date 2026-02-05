@@ -89,7 +89,7 @@ export default function Grades() {
       }
 
       // Process assignments with scores
-      const gradedAssignments = assignments.filter((assignment: Assignment) => {
+      const gradedAssignments: Assignment[] = assignments.filter((assignment: Assignment) => {
         return assignment.submitted && assignment.score !== undefined;
       });
 
@@ -98,6 +98,8 @@ export default function Grades() {
         const score = assignment.score || 0;
         const percentage = totalPoints > 0 ? (score / totalPoints) * 100 : 0;
 
+        const dateValue = assignment.submittedAt || assignment.submitted_at || assignment.dueDate || '';
+
         gradeItems.push({
           id: assignment.id || assignment._id || '',
           type: 'assignment',
@@ -105,7 +107,7 @@ export default function Grades() {
           score,
           totalPoints,
           percentage,
-          date: assignment.submittedAt || assignment.submitted_at || assignment.dueDate || '',
+          date: dateValue,
           status: 'graded',
         });
       }
