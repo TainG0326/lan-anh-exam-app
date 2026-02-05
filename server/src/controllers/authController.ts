@@ -335,9 +335,17 @@ const generateOTP = (): string => {
 // Send OTP email using Resend
 const sendOTPEmail = async (email: string, otp: string): Promise<boolean> => {
   try {
+    console.log('[OTP] Initializing Resend client...');
     const resend = new Resend(process.env.RESEND_API_KEY);
+    console.log('[OTP] RESEND_API_KEY present:', !!process.env.RESEND_API_KEY);
 
-    await resend.emails.send({
+    if (!process.env.RESEND_API_KEY) {
+      console.error('[OTP] RESEND_API_KEY is not set in environment variables!');
+      return false;
+    }
+
+    console.log('[OTP] Sending email to:', email);
+    const result = await resend.emails.send({
       from: 'English Exam <onboarding@resend.dev>',
       to: email,
       subject: 'Mã xác nhận đặt lại mật khẩu',
@@ -357,10 +365,12 @@ const sendOTPEmail = async (email: string, otp: string): Promise<boolean> => {
       `,
     });
 
-    console.log(`[OTP] Email sent to ${email}`);
+    console.log('[OTP] Email send result:', result);
     return true;
   } catch (error: any) {
     console.error('[OTP] Failed to send email:', error);
+    console.error('[OTP] Error message:', error.message);
+    console.error('[OTP] Error details:', error.response?.data || 'No response data');
     return false;
   }
 };
@@ -401,12 +411,20 @@ export const forgotPassword = async (req: Request, res: Response) => {
 
     // Send OTP email
     console.log('[OTP] Calling sendOTPEmail...');
-    await sendOTPEmail(email, otp);
-    console.log('[OTP] sendOTPEmail completed');
+    const emailSent = await sendOTPEmail(email, otp);
+    console.log('[OTP] sendOTPEmail completed, result:', emailSent);
+
+    if (!emailSent) {
+      console.error('[OTP] Failed to send OTP email');
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send OTP email. Please check if email service is configured.',
+      });
+    }
 
     res.json({
       success: true,
-      message: 'If an account exists with this email, an OTP will be sent.',
+      message: 'Mã OTP đã được gửi đến email của bạn!',
     });
   } catch (error: any) {
     console.error('[OTP] Forgot password error:', error);

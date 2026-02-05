@@ -28,15 +28,22 @@ export default function ForgotPassword() {
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    console.log('[ForgotPassword] Starting send OTP for:', email);
+    console.log('[ForgotPassword] API URL:', import.meta.env.VITE_API_URL);
 
     try {
+      console.log('[ForgotPassword] Sending request to /auth/forgot-password...');
       const response = await api.post('/auth/forgot-password', { email });
+      console.log('[ForgotPassword] Response:', response.data);
+      
       if (response.data.success) {
+        console.log('[ForgotPassword] OTP sent successfully!');
         toast.success('Mã OTP đã được gửi đến email của bạn!');
         setStep('otp');
       }
     } catch (error: any) {
-      console.error('Send OTP error:', error);
+      console.error('[ForgotPassword] Send OTP error:', error);
+      console.error('[ForgotPassword] Error response:', error.response?.data);
       toast.error(error.response?.data?.message || 'Không thể gửi mã OTP');
     } finally {
       setLoading(false);
