@@ -26,15 +26,22 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    console.log('Login: Starting login attempt for:', email);
 
     try {
+      console.log('Login: Calling API...');
       const response = await login(email, password);
+      console.log('Login: API response:', response);
+
       if (response.success) {
+        console.log('Login: Success, setting user and navigating...');
         setUser(response.user);
         toast.success('Login successful!');
         navigate('/');
       }
     } catch (error: any) {
+      console.error('Login: Error:', error);
+      console.error('Login: Error response:', error.response?.data);
       toast.error(error.response?.data?.message || 'Login failed');
     } finally {
       setLoading(false);

@@ -26,6 +26,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('AuthContext: storedUser from localStorage:', storedUser);
       if (storedUser) {
         setUser(storedUser);
+        console.log('AuthContext: User set from localStorage');
       }
 
       // Set a timeout to force loading = false
@@ -43,8 +44,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('AuthContext: getMe success:', currentUser);
           setUser(currentUser);
           localStorage.setItem('user', JSON.stringify(currentUser));
-        } catch (error) {
-          console.warn('AuthContext: getMe failed, using cached user:', error);
+        } catch (error: any) {
+          console.warn('AuthContext: getMe failed, keeping cached user:', error.message);
+          // Keep the user from localStorage even if API call fails
+          const cachedUser = getCurrentUser();
+          if (cachedUser) {
+            setUser(cachedUser);
+            console.log('AuthContext: Restored user from localStorage after getMe failure');
+          }
         }
       } else {
         console.log('AuthContext: No token found');
@@ -54,7 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       clearTimeout(timeoutId);
       setAuthInitializing(false);
       setLoading(false);
-      console.log('AuthContext: Loading complete');
+      console.log('AuthContext: Loading complete, user:', user?.email);
     };
 
     // Small delay to ensure localStorage is ready
