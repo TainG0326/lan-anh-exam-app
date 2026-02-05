@@ -9,6 +9,13 @@ const api = axios.create({
   },
 });
 
+// Flag để tránh redirect khi đang init auth
+let isAuthInitializing = true;
+
+export const setAuthInitializing = (value: boolean) => {
+  isAuthInitializing = value;
+};
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
@@ -20,10 +27,17 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+    // Chỉ redirect khi không phải đang init auth và thực sự là lỗi 401
+    if (error.response?.status === 401 && !isAuthInitializing) {
+      // Kiểm tra xem có token không - nếu có thì có thể là API lỗi tạm thời
+      const token = localStorage.getItem('token');
+      if (!token) {
+        // Không có token thật - redirect về login
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
+      // Nếu có token, có thể là API lỗi tạm thời - không redirect
     }
     return Promise.reject(error);
   }

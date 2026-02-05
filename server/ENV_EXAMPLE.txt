@@ -1,0 +1,19 @@
+# Supabase Configuration
+# Get these from: https://supabase.com/dashboard/project/hvophbiqtpffokpienki/settings/api
+
+# Project URL (copy from Supabase Dashboard → Settings → API → Project URL)
+SUPABASE_URL=https://hvophbiqtpffokpienki.supabase.co
+
+# Anon Key (copy from Supabase Dashboard → Settings → API → anon / public key)
+SUPABASE_ANON_KEY=your-anon-key-here
+
+# JWT Secrets
+JWT_SECRET=your-super-secret-jwt-key-change-in-production
+JWT_REFRESH_SECRET=your-refresh-token-secret-change-in-production
+
+# Server Config
+PORT=5000
+NODE_ENV=development
+
+
+

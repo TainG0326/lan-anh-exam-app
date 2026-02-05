@@ -36,8 +36,8 @@ export const createExam = async (examData: Partial<Exam>) => {
 };
 
 export const getExams = async () => {
-  const response = await api.get<{ success: boolean; exams: Exam[] }>('/exams');
-  return response.data.exams;
+  const response = await api.get<{ success: boolean; data: Exam[] }>('/exams');
+  return response.data.data; // Backend returns 'data' not 'exams'
 };
 
 export const getExamByCode = async (code: string) => {

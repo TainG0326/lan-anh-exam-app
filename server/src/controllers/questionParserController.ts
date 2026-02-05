@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import { parseQuestions } from '../utils/questionParser.js';
-import multer from 'multer';
+import multer, { FileFilterCallback } from 'multer';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -19,7 +19,7 @@ const upload = multer({
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (req: any, file: Express.Multer.File, cb: FileFilterCallback) => {
     // Accept text files and docx
     const allowedMimes = [
       'text/plain',

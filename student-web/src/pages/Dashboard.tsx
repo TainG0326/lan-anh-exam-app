@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getExams } from '../services/examService';
 import { getAssignments } from '../services/assignmentService';
+import { useAuth } from '../context/AuthContext';
 import { 
   FileText, 
   Clock, 
@@ -24,10 +25,14 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [examCode, setExamCode] = useState('');
   const navigate = useNavigate();
+  const { loading: authLoading } = useAuth();
 
   useEffect(() => {
-    loadData();
-  }, []);
+    // Chờ auth load xong mới gọi API
+    if (!authLoading) {
+      loadData();
+    }
+  }, [authLoading]);
 
   const loadData = async () => {
     try {

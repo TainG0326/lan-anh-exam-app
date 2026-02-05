@@ -24,6 +24,15 @@ export const login = async (email: string, password: string): Promise<AuthRespon
   return response.data;
 };
 
+export const register = async (name: string, email: string, password: string): Promise<AuthResponse> => {
+  const response = await api.post<AuthResponse>('/auth/register', { name, email, password });
+  if (response.data.success) {
+    localStorage.setItem('token', response.data.token);
+    localStorage.setItem('user', JSON.stringify(response.data.user));
+  }
+  return response.data;
+};
+
 export const getMe = async (): Promise<User> => {
   const response = await api.get<{ success: boolean; user: User }>('/auth/me');
   return response.data.user;

@@ -3,6 +3,7 @@ import { getClasses, createClass, Class } from '../services/classService';
 import { Plus, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ClassCard from '../components/ClassCard';
+import GlassCard from '../components/GlassCard';
 
 export default function Classes() {
   const [classes, setClasses] = useState<Class[]>([]);
@@ -45,7 +46,7 @@ export default function Classes() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="animate-pulse text-text-secondary">Loading...</div>
+        <div className="animate-pulse text-text-secondary text-lg">Loading...</div>
       </div>
     );
   }
@@ -64,14 +65,14 @@ export default function Classes() {
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className="inline-flex items-center justify-center px-6 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-colors text-sm shadow-soft"
+          className="inline-flex items-center justify-center px-6 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-all duration-300 hover:scale-[1.02] shadow-lg"
         >
           <Plus className="w-5 h-5 mr-2" />
           Create Class
         </button>
       </div>
 
-      {/* Grid Layout - Similar to reference image */}
+      {/* Grid Layout - Glass Cards */}
       {classes.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {classes.map((classItem) => (
@@ -87,7 +88,7 @@ export default function Classes() {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center py-20 bg-background-light rounded-3xl border border-border">
+        <GlassCard className="flex flex-col items-center justify-center py-20">
           <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
             <Plus className="w-8 h-8 text-primary" />
           </div>
@@ -95,22 +96,22 @@ export default function Classes() {
           <p className="text-text-secondary text-sm mb-6">Create your first class to get started</p>
           <button
             onClick={() => setShowModal(true)}
-            className="px-6 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-colors text-sm"
+            className="px-6 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-all duration-300 hover:scale-[1.02]"
           >
             Create Class
           </button>
-        </div>
+        </GlassCard>
       )}
 
-      {/* Create Class Modal */}
+      {/* Create Class Modal - Glass */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-background-light rounded-3xl border border-border shadow-soft w-full max-w-md p-6 animate-fade-in-down">
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <GlassCard className="w-full max-w-md p-6 animate-fade-in-down" hover={false}>
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-text-primary tracking-tight">Create New Class</h3>
               <button
                 onClick={() => setShowModal(false)}
-                className="p-2 rounded-full hover:bg-gray-50 transition-colors"
+                className="p-2 rounded-full hover:bg-white/40 transition-colors"
               >
                 <X className="w-5 h-5 text-text-secondary" />
               </button>
@@ -124,7 +125,7 @@ export default function Classes() {
                 <input
                   type="text"
                   required
-                  className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                  className="w-full px-4 py-3 bg-white/30 backdrop-blur-lg border border-white/40 rounded-xl text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                   placeholder="e.g., English 10A"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -137,7 +138,7 @@ export default function Classes() {
                 </label>
                 <select
                   required
-                  className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                  className="w-full px-4 py-3 bg-white/30 backdrop-blur-lg border border-white/40 rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                   value={formData.grade}
                   onChange={(e) =>
                     setFormData({ ...formData, grade: e.target.value as 'THCS' | 'THPT' })
@@ -156,7 +157,7 @@ export default function Classes() {
                   type="text"
                   required
                   placeholder="e.g., 6, 7, 8, 9, 10, 11, 12"
-                  className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                  className="w-full px-4 py-3 bg-white/30 backdrop-blur-lg border border-white/40 rounded-xl text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                   value={formData.level}
                   onChange={(e) => setFormData({ ...formData, level: e.target.value })}
                 />
@@ -166,19 +167,19 @@ export default function Classes() {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-3 border border-border rounded-full text-sm font-semibold text-text-secondary hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-4 py-3 border border-white/40 rounded-full text-sm font-semibold text-text-secondary hover:bg-white/40 transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-colors text-sm"
+                  className="flex-1 px-4 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-all duration-300 hover:scale-[1.02]"
                 >
                   Create
                 </button>
               </div>
             </form>
-          </div>
+          </GlassCard>
         </div>
       )}
     </div>
