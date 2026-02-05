@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getExams, Exam } from '../services/examService';
-import { FileText, Plus, Clock, Users, MoreVertical, Edit, Eye, Trash2 } from 'lucide-react';
+import { FileText, Plus, Clock, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format, isValid } from 'date-fns';
 import GlassCard from '../components/GlassCard';

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { createExam } from '../services/examService';
 import { getClasses, Class } from '../services/classService';
 import { parseFile } from '../services/questionParserService';
-import { Plus, X, Trash2, Upload, FileText } from 'lucide-react';
+import { Plus, Trash2, Upload, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useEffect } from 'react';
 

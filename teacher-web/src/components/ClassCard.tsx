@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Users, BookOpen, Clock } from 'lucide-react';
+import { Users, BookOpen } from 'lucide-react';
 import GlassCard from './GlassCard';
 
 interface ClassCardProps {

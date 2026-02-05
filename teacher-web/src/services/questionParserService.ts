@@ -1,5 +1,3 @@
-import api from './api';
-
 export interface ParsedQuestion {
   question: string;
   type: 'multiple-choice';
