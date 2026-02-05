@@ -19,7 +19,7 @@ const upload = multer({
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
-  fileFilter: (req: any, file: Express.Multer.File, cb: FileFilterCallback) => {
+  fileFilter: (req: any, file: any, cb: FileFilterCallback) => {
     // Accept text files and docx
     const allowedMimes = [
       'text/plain',

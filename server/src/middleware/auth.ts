@@ -3,12 +3,10 @@ import jwt from 'jsonwebtoken';
 import { UserDB, User } from '../database/User.js';
 import { generateToken } from '../utils/generateToken.js';
 
-// Extended Request interface with body, params, file
+// Extended Request interface with user
 export interface AuthRequest extends Request {
   user?: User;
-  body: any;
-  params: any;
-  query: any;
+  file?: any;
 }
 
 export const protect = async (

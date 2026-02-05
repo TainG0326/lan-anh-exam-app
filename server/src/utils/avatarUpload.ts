@@ -12,11 +12,11 @@ fs.mkdir(avatarDir, { recursive: true }).catch(console.error);
 
 // Configure multer for avatar uploads
 const storage = multer.diskStorage({
-  destination: async (req: any, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
+  destination: async (req: any, file: any, cb: (error: Error | null, destination: string) => void) => {
     await fs.mkdir(avatarDir, { recursive: true });
     cb(null, avatarDir);
   },
-  filename: (req: any, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
+  filename: (req: any, file: any, cb: (error: Error | null, filename: string) => void) => {
     // Generate unique filename: userId-timestamp.extension
     const userId = req.user?.id || 'unknown';
     const timestamp = Date.now();
@@ -30,7 +30,7 @@ export const avatarUpload = multer({
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit
   },
-  fileFilter: (req: any, file: Express.Multer.File, cb: FileFilterCallback) => {
+  fileFilter: (req: any, file: any, cb: FileFilterCallback) => {
     // Accept only image files
     const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     const allowedExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
