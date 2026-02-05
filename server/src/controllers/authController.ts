@@ -4,10 +4,11 @@ import { generateToken, generateRefreshToken } from '../utils/generateToken.js';
 import { AuthRequest } from '../middleware/auth.js';
 import bcrypt from 'bcryptjs';
 import { avatarUploadMiddleware } from '../utils/avatarUpload.js';
-import { uploadAvatarToSupabase, deleteAvatarFromSupabase, getAvatarUrl } from '../utils/supabaseStorage.js';
+import { uploadAvatarToSupabase, deleteAvatarFromSupabase } from '../utils/supabaseStorage.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { Resend } from 'resend';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -331,11 +332,37 @@ const generateOTP = (): string => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-// Send OTP email (mock - in production, use nodemailer or email service)
+// Send OTP email using Resend
 const sendOTPEmail = async (email: string, otp: string): Promise<boolean> => {
-  console.log(`[OTP] Sending OTP ${otp} to ${email}`);
-  // In production, implement actual email sending here
-  return true;
+  try {
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    await resend.emails.send({
+      from: 'English Exam <onboarding@resend.dev>',
+      to: email,
+      subject: 'Mã xác nhận đặt lại mật khẩu',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #5F8D78;">English Exam System</h2>
+          <p>Xin chào,</p>
+          <p>Bạn đã yêu cầu đặt lại mật khẩu. Dưới đây là mã xác nhận của bạn:</p>
+          <div style="background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 32px; letter-spacing: 8px; font-weight: bold; margin: 20px 0;">
+            ${otp}
+          </div>
+          <p>Mã này có hiệu lực trong <strong>5 phút</strong>.</p>
+          <p>Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+          <p style="color: #888; font-size: 12px;">English Exam System - Hệ thống học tập và thi online</p>
+        </div>
+      `,
+    });
+
+    console.log(`[OTP] Email sent to ${email}`);
+    return true;
+  } catch (error: any) {
+    console.error('[OTP] Failed to send email:', error);
+    return false;
+  }
 };
 
 export const forgotPassword = async (req: Request, res: Response) => {
