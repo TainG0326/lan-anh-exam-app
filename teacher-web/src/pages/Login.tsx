@@ -153,7 +153,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-2 sm:px-4 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center px-2 sm:px-4 relative overflow-hidden bg-gradient-to-br from-green-400 via-emerald-400 to-teal-500">
       {/* Desktop Background - hidden on mobile, shown on md+ */}
       <div 
         className="absolute inset-0 bg-cover bg-center bg-no-repeat hidden md:block"
