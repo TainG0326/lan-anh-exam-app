@@ -153,16 +153,23 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-2 sm:px-4 relative overflow-hidden bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50">
-      {/* Background Image - with gradient fallback */}
+    <div className="min-h-screen flex items-center justify-center px-2 sm:px-4 relative overflow-hidden">
+      {/* Background Image - different image for mobile vs desktop */}
       <div 
-        className="absolute inset-0 bg-cover bg-center"
+        className="absolute inset-0 bg-cover bg-center md:bg-contain lg:bg-cover"
         style={{ 
           backgroundImage: 'url(/login-bg.png)',
         }}
       />
+      {/* Mobile-specific background - shows on mobile only */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center md:hidden"
+        style={{ 
+          backgroundImage: 'url(/login-bg-mobile.png)',
+        }}
+      />
       {/* Overlay */}
-      <div className="absolute inset-0 bg-white/40 md:bg-white/30" />
+      <div className="absolute inset-0 bg-white/30" />
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
