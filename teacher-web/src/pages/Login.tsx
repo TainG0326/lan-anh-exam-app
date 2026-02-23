@@ -154,16 +154,16 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-2 sm:px-4 relative overflow-hidden">
-      {/* Background Image - different image for mobile vs desktop */}
+      {/* Desktop Background - hidden on mobile, shown on md+ */}
       <div 
-        className="absolute inset-0 bg-cover bg-center md:bg-contain lg:bg-cover"
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat hidden md:block"
         style={{ 
           backgroundImage: 'url(/login-bg.png)',
         }}
       />
-      {/* Mobile-specific background - shows on mobile only */}
+      {/* Mobile Background - shown only on mobile, hidden on md+ */}
       <div 
-        className="absolute inset-0 bg-cover bg-center md:hidden"
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat md:hidden"
         style={{ 
           backgroundImage: 'url(/login-bg-mobile.png)',
         }}
