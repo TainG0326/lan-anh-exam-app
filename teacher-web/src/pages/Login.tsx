@@ -153,16 +153,15 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-2 sm:px-4 relative overflow-hidden">
-      {/* Background Image - responsive for mobile */}
+    <div className="min-h-screen flex items-center justify-center px-2 sm:px-4 relative overflow-hidden bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50">
+      {/* Background Image - with gradient fallback */}
       <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat md:bg-cover"
+        className="absolute inset-0 bg-cover bg-center"
         style={{ 
           backgroundImage: 'url(/login-bg.png)',
-          backgroundPosition: 'center center',
         }}
       />
-      {/* Overlay - lighter on mobile for better readability */}
+      {/* Overlay */}
       <div className="absolute inset-0 bg-white/40 md:bg-white/30" />
 
       <motion.div
