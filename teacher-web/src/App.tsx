@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { LanguageProvider } from './context/LanguageContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Classes from './pages/Classes';
@@ -64,15 +65,17 @@ function AppRoutes() {
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter
-        future={{
-          v7_startTransition: true,
-          v7_relativeSplatPath: true,
-        }}
-      >
-        <AppRoutes />
-        <Toaster position="top-right" />
-      </BrowserRouter>
+      <LanguageProvider>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
+          <AppRoutes />
+          <Toaster position="top-right" />
+        </BrowserRouter>
+      </LanguageProvider>
     </AuthProvider>
   );
 }
