@@ -4,10 +4,12 @@ import { BookOpen, Plus, Clock, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format, isValid } from 'date-fns';
 import GlassCard from '../components/GlassCard';
+import CreateAssignmentModal from '../components/CreateAssignmentModal';
 
 export default function Assignments() {
   const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     loadAssignments();
@@ -44,11 +46,20 @@ export default function Assignments() {
             Create and grade assignments for students
           </p>
         </div>
-        <button className="inline-flex items-center justify-center px-6 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-all duration-300 hover:scale-[1.02] shadow-lg">
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="inline-flex items-center justify-center px-6 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-all duration-300 hover:scale-[1.02] shadow-lg"
+        >
           <Plus className="w-5 h-5 mr-2" />
           Create New Assignment
         </button>
       </div>
+
+      <CreateAssignmentModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={loadAssignments}
+      />
 
       {/* Assignments Table - Glass Container */}
       <GlassCard className="p-0 overflow-hidden" hover={false}>
