@@ -4,8 +4,13 @@
 # Project URL (copy from Supabase Dashboard → Settings → API → Project URL)
 SUPABASE_URL=https://hvophbiqtpffokpienki.supabase.co
 
-# Anon Key (copy from Supabase Dashboard → Settings → API → anon / public key)
+# Anon Key (frontend / public)
 SUPABASE_ANON_KEY=your-anon-key-here
+
+# Service Role Key — REQUIRED on the API server in production so RLS does not block
+# server-side reads (email_whitelist, users, etc.). Never expose in frontend.
+# Dashboard → Settings → API → service_role (secret)
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
 
 # JWT Secrets
 JWT_SECRET=your-super-secret-jwt-key-change-in-production
@@ -14,6 +19,14 @@ JWT_REFRESH_SECRET=your-refresh-token-secret-change-in-production
 # Server Config
 PORT=5000
 NODE_ENV=development
+
+# Security Features
+WHITELIST_ENABLED=true
+REQUIRE_2FA=true
+
+# Resend Email API Key (for OTP emails)
+# Get from: https://resend.com/api-keys
+RESEND_API_KEY=your-resend-api-key
 
 
 

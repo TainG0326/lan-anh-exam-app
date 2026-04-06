@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { UserDB } from '../database/User.js';
+import { WhitelistDB } from '../database/Whitelist.js';
+import { OTPService } from '../services/otpService.js';
 import { generateToken, generateRefreshToken } from '../utils/generateToken.js';
 import { AuthRequest } from '../middleware/auth.js';
 import bcrypt from 'bcryptjs';
@@ -13,9 +15,87 @@ import { Resend } from 'resend';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ============================================================
+// WHITELIST CHECK HELPER
+// ============================================================
+const checkWhitelist = async (email: string, role: string): Promise<{ allowed: boolean; message?: string }> => {
+  const whitelistEnabled = process.env.WHITELIST_ENABLED !== 'false';
+
+  if (!whitelistEnabled) {
+    return { allowed: true };
+  }
+
+  const isWhitelisted = await WhitelistDB.isEmailWhitelisted(email);
+  if (!isWhitelisted) {
+    console.log(`[WHITELIST] Email "${email}" not in whitelist for role "${role}"`);
+    return {
+      allowed: false,
+      message: 'Email không được phép đăng nhập. Vui lòng liên hệ quản trị viên để được cấp quyền.',
+    };
+  }
+
+  return { allowed: true };
+};
+
+// ============================================================
+// SEND OTP EMAIL
+// ============================================================
+const sendOTPEmail = async (email: string, otp: string, purpose: 'login' | 'reset'): Promise<boolean> => {
+  try {
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    if (!process.env.RESEND_API_KEY) {
+      console.error('[OTP] RESEND_API_KEY is not set!');
+      return false;
+    }
+
+    const subject = purpose === 'login'
+      ? 'Mã xác nhận đăng nhập - Lan Anh English'
+      : 'Mã xác nhận đặt lại mật khẩu';
+
+    await resend.emails.send({
+      from: 'English Exam <onboarding@resend.dev>',
+      to: email,
+      subject,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #5F8D78;">Lan Anh English</h2>
+          <p>Xin chào,</p>
+          <p>Bạn ${purpose === 'login' ? 'đang đăng nhập' : 'yêu cầu đặt lại mật khẩu'}.
+             Dưới đây là mã xác nhận của bạn:</p>
+          <div style="background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 32px; letter-spacing: 8px; font-weight: bold; margin: 20px 0;">
+            ${otp}
+          </div>
+          <p>Mã này có hiệu lực trong <strong>5 phút</strong>.</p>
+          <p>Nếu bạn không ${purpose === 'login' ? 'đăng nhập' : 'yêu cầu đặt lại mật khẩu'}, vui lòng bỏ qua email này.</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+          <p style="color: #888; font-size: 12px;">English Exam System - Hệ thống học tập và thi online</p>
+        </div>
+      `,
+    });
+
+    console.log('[OTP] Email sent successfully');
+    return true;
+  } catch (error: any) {
+    console.error('[OTP] Failed to send email:', error);
+    return false;
+  }
+};
+
 export const register = async (req: Request, res: Response) => {
   try {
     const { email, password, name, role, studentId, classId } = req.body;
+
+    // Check whitelist for teacher role
+    if (role === 'teacher') {
+      const whitelistCheck = await checkWhitelist(email, role);
+      if (!whitelistCheck.allowed) {
+        return res.status(403).json({
+          success: false,
+          message: whitelistCheck.message,
+        });
+      }
+    }
 
     const existingUser = await UserDB.findByEmail(email);
     if (existingUser) {
@@ -74,7 +154,7 @@ export const register = async (req: Request, res: Response) => {
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, otp } = req.body;
 
     const user = await UserDB.findByEmail(email);
     if (!user) {
@@ -82,6 +162,17 @@ export const login = async (req: Request, res: Response) => {
         success: false,
         message: 'Invalid email or password.',
       });
+    }
+
+    // Check whitelist for teacher role
+    if (user.role === 'teacher') {
+      const whitelistCheck = await checkWhitelist(email, user.role);
+      if (!whitelistCheck.allowed) {
+        return res.status(403).json({
+          success: false,
+          message: whitelistCheck.message,
+        });
+      }
     }
 
     const isPasswordValid = await UserDB.comparePassword(user.password!, password);
@@ -92,6 +183,48 @@ export const login = async (req: Request, res: Response) => {
       });
     }
 
+    // Check if 2FA is enabled for this user
+    if (user.two_factor_enabled && user.two_factor_verified) {
+      // 2FA is enabled - require OTP
+      if (!otp) {
+        // First step: password validated, need OTP
+        return res.json({
+          success: false,
+          requires2FA: true,
+          message: 'Vui lòng nhập mã xác thực 2FA đã được gửi đến email của bạn.',
+          tempToken: generateToken(user.id, '5m'), // Short-lived token for 2FA verification
+        });
+      }
+
+      // Second step: verify OTP
+      const otpResult = await OTPService.verifyOTP(email, otp, 'login');
+      if (!otpResult.valid) {
+        return res.status(401).json({
+          success: false,
+          requires2FA: true,
+          message: otpResult.error,
+        });
+      }
+
+      // OTP verified, clear it
+      OTPService.clearOTP(email);
+    }
+
+    // Check if first login (2FA not set up yet but enabled for all)
+    if (user.role === 'teacher' && process.env.REQUIRE_2FA === 'true' && !user.two_factor_enabled) {
+      // Generate and send OTP for first-time setup
+      const otp = await OTPService.createLoginOTP(user.id, email);
+      await sendOTPEmail(email, otp, 'login');
+
+      return res.json({
+        success: false,
+        requires2FA: true,
+        requiresSetup: true,
+        message: 'Vui lòng xác thực email để hoàn tất đăng nhập lần đầu.',
+      });
+    }
+
+    // Generate tokens for successful login
     const accessToken = generateToken(user.id);
     const refreshToken = generateRefreshToken(user.id);
 
@@ -122,6 +255,7 @@ export const login = async (req: Request, res: Response) => {
         role: user.role,
         classId: user.class_id,
         avatarUrl: user.avatar_url || null,
+        two_factor_enabled: user.two_factor_enabled || false,
       },
     });
   } catch (error: any) {
@@ -324,64 +458,14 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// Store OTPs temporarily (in production, use Redis or database)
-const otpStore: Map<string, { otp: string; expiresAt: number }> = new Map();
-
-// Generate random 6-digit OTP
-const generateOTP = (): string => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-};
-
-// Send OTP email using Resend
-const sendOTPEmail = async (email: string, otp: string): Promise<boolean> => {
-  try {
-    console.log('[OTP] Initializing Resend client...');
-    const resend = new Resend(process.env.RESEND_API_KEY);
-    console.log('[OTP] RESEND_API_KEY present:', !!process.env.RESEND_API_KEY);
-
-    if (!process.env.RESEND_API_KEY) {
-      console.error('[OTP] RESEND_API_KEY is not set in environment variables!');
-      return false;
-    }
-
-    console.log('[OTP] Sending email to:', email);
-    const result = await resend.emails.send({
-      from: 'English Exam <onboarding@resend.dev>',
-      to: email,
-      subject: 'Mã xác nhận đặt lại mật khẩu',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <h2 style="color: #5F8D78;">English Exam System</h2>
-          <p>Xin chào,</p>
-          <p>Bạn đã yêu cầu đặt lại mật khẩu. Dưới đây là mã xác nhận của bạn:</p>
-          <div style="background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 32px; letter-spacing: 8px; font-weight: bold; margin: 20px 0;">
-            ${otp}
-          </div>
-          <p>Mã này có hiệu lực trong <strong>5 phút</strong>.</p>
-          <p>Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.</p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-          <p style="color: #888; font-size: 12px;">English Exam System - Hệ thống học tập và thi online</p>
-        </div>
-      `,
-    });
-
-    console.log('[OTP] Email send result:', result);
-    return true;
-  } catch (error: any) {
-    console.error('[OTP] Failed to send email:', error);
-    console.error('[OTP] Error message:', error.message);
-    console.error('[OTP] Error details:', error.response?.data || 'No response data');
-    return false;
-  }
-};
-
+// ============================================================
+// FORGOT PASSWORD (using new OTPService)
+// ============================================================
 export const forgotPassword = async (req: Request, res: Response) => {
   try {
-    console.log('[OTP] Forgot password request received for email:', req.body.email);
     const { email } = req.body;
 
     if (!email) {
-      console.log('[OTP] No email provided');
       return res.status(400).json({
         success: false,
         message: 'Email is required.',
@@ -389,33 +473,22 @@ export const forgotPassword = async (req: Request, res: Response) => {
     }
 
     const user = await UserDB.findByEmail(email);
-    console.log('[OTP] User found:', user ? 'yes' : 'no');
 
+    // Don't reveal if user exists or not (security best practice)
     if (!user) {
-      // Don't reveal if user exists or not
-      console.log('[OTP] User not found, returning success response');
       return res.json({
         success: true,
         message: 'If an account exists with this email, an OTP will be sent.',
       });
     }
 
-    // Generate OTP
-    const otp = generateOTP();
-    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
-
-    // Store OTP
-    console.log('[OTP] Generated OTP for', email, ':', otp);
-    otpStore.set(email, { otp, expiresAt });
-    console.log('[OTP] OTP stored, expires at', new Date(expiresAt).toISOString());
+    // Create OTP for password reset
+    const otp = await OTPService.createResetOTP(user.id, email);
 
     // Send OTP email
-    console.log('[OTP] Calling sendOTPEmail...');
-    const emailSent = await sendOTPEmail(email, otp);
-    console.log('[OTP] sendOTPEmail completed, result:', emailSent);
+    const emailSent = await sendOTPEmail(email, otp, 'reset');
 
     if (!emailSent) {
-      console.error('[OTP] Failed to send OTP email');
       return res.status(500).json({
         success: false,
         message: 'Failed to send OTP email. Please check if email service is configured.',
@@ -435,68 +508,43 @@ export const forgotPassword = async (req: Request, res: Response) => {
   }
 };
 
+// ============================================================
+// RESET PASSWORD (verify OTP)
+// ============================================================
 export const resetPassword = async (req: Request, res: Response) => {
   try {
-    console.log('[OTP] Reset password request received:', { email: req.body.email, otp: req.body.otp });
     const { email, otp, newPassword } = req.body;
 
     if (!email || !otp || !newPassword) {
-      console.log('[OTP] Missing required fields');
       return res.status(400).json({
         success: false,
         message: 'Email, OTP, and new password are required.',
       });
     }
 
-    // Check OTP
-    const storedOTP = otpStore.get(email);
-    console.log('[OTP] storedOTP:', storedOTP ? 'found' : 'not found');
-
-    if (!storedOTP) {
-      console.log('[OTP] No OTP found for', email);
+    // Verify OTP
+    const otpResult = await OTPService.verifyOTP(email, otp, 'reset');
+    if (!otpResult.valid) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid or expired OTP.',
+        message: otpResult.error,
       });
     }
 
-    if (Date.now() > storedOTP.expiresAt) {
-      console.log('[OTP] OTP expired at', new Date(storedOTP.expiresAt).toISOString());
-      otpStore.delete(email);
-      return res.status(400).json({
-        success: false,
-        message: 'OTP has expired.',
-      });
-    }
-
-    if (storedOTP.otp !== otp) {
-      console.log('[OTP] OTP mismatch:', { expected: storedOTP.otp, received: otp });
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid OTP.',
-      });
-    }
-
-    console.log('[OTP] OTP validated successfully');
-
-    // Verify user exists
+    // Find user and update password
     const user = await UserDB.findByEmail(email);
     if (!user) {
-      console.log('[OTP] User not found for', email);
       return res.status(400).json({
         success: false,
         message: 'User not found.',
       });
     }
 
-    console.log('[OTP] User found, updating password...');
-    // Hash new password and update
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     await UserDB.update(user.id, { password: hashedPassword });
 
     // Clear OTP
-    otpStore.delete(email);
-    console.log('[OTP] Password reset successful for', email);
+    OTPService.clearOTP(email);
 
     res.json({
       success: true,
@@ -507,6 +555,275 @@ export const resetPassword = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to reset password.',
+    });
+  }
+};
+
+// ============================================================
+// VERIFY LOGIN OTP (2FA verification step)
+// ============================================================
+export const verifyLoginOTP = async (req: Request, res: Response) => {
+  try {
+    const { email, otp, tempToken } = req.body;
+
+    if (!email || !otp || !tempToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email, OTP, and tempToken are required.',
+      });
+    }
+
+    // Verify temp token
+    const jwt = await import('jsonwebtoken');
+    let decoded: any;
+    try {
+      decoded = jwt.default.verify(
+        tempToken,
+        process.env.JWT_SECRET || 'secret'
+      );
+    } catch {
+      return res.status(401).json({
+        success: false,
+        message: 'Token hết hạn. Vui lòng đăng nhập lại.',
+      });
+    }
+
+    // Verify OTP
+    const otpResult = await OTPService.verifyOTP(email, otp, 'login');
+    if (!otpResult.valid) {
+      return res.status(401).json({
+        success: false,
+        message: otpResult.error,
+      });
+    }
+
+    // Get user
+    const user = await UserDB.findById(decoded.id);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not found.',
+      });
+    }
+
+    // Clear OTP
+    OTPService.clearOTP(email);
+
+    // Generate full tokens
+    const accessToken = generateToken(user.id);
+    const refreshToken = generateRefreshToken(user.id);
+
+    // Set HttpOnly cookies
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieOptions = {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : ('lax' as const),
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    } as const;
+
+    res.cookie('accessToken', accessToken, cookieOptions);
+    res.cookie('refreshToken', refreshToken, {
+      ...cookieOptions,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      success: true,
+      token: accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        classId: user.class_id,
+        avatarUrl: user.avatar_url || null,
+        two_factor_enabled: user.two_factor_enabled || false,
+      },
+    });
+  } catch (error: any) {
+    console.error('[2FA] Verify login OTP error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Verification failed.',
+    });
+  }
+};
+
+// ============================================================
+// REQUEST 2FA CODE (re-send OTP for login)
+// ============================================================
+export const request2FA = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized.',
+      });
+    }
+
+    const user = await UserDB.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found.',
+      });
+    }
+
+    // Create OTP for login
+    const otp = await OTPService.createLoginOTP(user.id, user.email);
+
+    // Send OTP email
+    const emailSent = await sendOTPEmail(user.email, otp, 'login');
+
+    if (!emailSent) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send OTP email.',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Mã xác thực đã được gửi đến email của bạn.',
+    });
+  } catch (error: any) {
+    console.error('[2FA] Request 2FA error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to request 2FA.',
+    });
+  }
+};
+
+// ============================================================
+// GOOGLE LOGIN (OAuth via Supabase on teacher-web)
+// ============================================================
+export const googleLogin = async (req: Request, res: Response) => {
+  try {
+    const { email, name, avatarUrl } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required.',
+      });
+    }
+
+    const whitelistCheck = await checkWhitelist(email, 'teacher');
+    if (!whitelistCheck.allowed) {
+      return res.status(403).json({
+        success: false,
+        message: whitelistCheck.message,
+      });
+    }
+
+    let user = await UserDB.findByEmail(email);
+
+    if (!user) {
+      user = await UserDB.create({
+        email,
+        name: name || 'Teacher',
+        role: 'teacher',
+        avatar_url: avatarUrl || undefined,
+      });
+    } else if (avatarUrl && user.role === 'teacher') {
+      user = await UserDB.update(user.id, { avatar_url: avatarUrl });
+    }
+
+    const accessToken = generateToken(user.id);
+    const refreshToken = generateRefreshToken(user.id);
+
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieOptions = {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : ('lax' as const),
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    } as const;
+
+    res.cookie('accessToken', accessToken, cookieOptions);
+    res.cookie('refreshToken', refreshToken, {
+      ...cookieOptions,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      success: true,
+      token: accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        classId: user.class_id,
+        avatarUrl: user.avatar_url || null,
+        two_factor_enabled: user.two_factor_enabled || false,
+      },
+    });
+  } catch (error: any) {
+    console.error('[googleLogin]', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Google login failed.',
+    });
+  }
+};
+
+// ============================================================
+// WHITELIST MANAGEMENT (Admin only)
+// ============================================================
+export const listWhitelist = async (req: AuthRequest, res: Response) => {
+  try {
+    const whitelist = await WhitelistDB.list();
+
+    res.json({
+      success: true,
+      whitelist,
+    });
+  } catch (error: any) {
+    console.error('[WHITELIST] List error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to list whitelist.',
+    });
+  }
+};
+
+export const manageWhitelist = async (req: AuthRequest, res: Response) => {
+  try {
+    const { email, name, role, action } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required.',
+      });
+    }
+
+    if (action === 'delete') {
+      await WhitelistDB.deactivate(email);
+      res.json({
+        success: true,
+        message: 'Email đã được xóa khỏi whitelist.',
+      });
+    } else {
+      // Add or update whitelist
+      await WhitelistDB.create({ email, name, role });
+      res.json({
+        success: true,
+        message: 'Email đã được thêm vào whitelist.',
+      });
+    }
+  } catch (error: any) {
+    console.error('[WHITELIST] Manage error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to manage whitelist.',
     });
   }
 };

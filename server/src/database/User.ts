@@ -10,6 +10,9 @@ export interface User {
   student_id?: string;
   class_id?: string;
   avatar_url?: string;
+  two_factor_enabled?: boolean;
+  two_factor_secret?: string;
+  two_factor_verified?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -39,26 +42,30 @@ export const UserDB = {
 
   async create(userData: {
     email: string;
-    password: string;
+    password?: string;
     name: string;
     role: 'teacher' | 'student';
     studentId?: string;
     classId?: string;
+    avatar_url?: string;
   }): Promise<User> {
-    const hashedPassword = await bcrypt.hash(userData.password, 12);
+    const insertData: Record<string, unknown> = {
+      email: userData.email.toLowerCase(),
+      name: userData.name,
+      role: userData.role,
+      student_id: userData.studentId || null,
+      class_id: userData.classId || null,
+    };
 
-    const { data, error } = await supabase
-      .from('users')
-      .insert({
-        email: userData.email.toLowerCase(),
-        password: hashedPassword,
-        name: userData.name,
-        role: userData.role,
-        student_id: userData.studentId || null,
-        class_id: userData.classId || null,
-      })
-      .select()
-      .single();
+    if (userData.password) {
+      insertData.password = await bcrypt.hash(userData.password, 12);
+    }
+
+    if (userData.avatar_url) {
+      insertData.avatar_url = userData.avatar_url;
+    }
+
+    const { data, error } = await supabase.from('users').insert(insertData).select().single();
 
     if (error) throw error;
     return data as User;
