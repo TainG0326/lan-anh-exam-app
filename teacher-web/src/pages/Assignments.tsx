@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { format, isValid } from 'date-fns';
 import GlassCard from '../components/GlassCard';
 import CreateAssignmentModal from '../components/CreateAssignmentModal';
+import BookLoader from '../components/BookLoader';
 
 export default function Assignments() {
   const [assignments, setAssignments] = useState<any[]>([]);
@@ -29,7 +30,7 @@ export default function Assignments() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="animate-pulse text-text-secondary text-lg">Loading...</div>
+        <BookLoader />
       </div>
     );
   }

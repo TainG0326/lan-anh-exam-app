@@ -11,22 +11,57 @@ export interface User {
 
 export interface AuthResponse {
   success: boolean;
-  token: string;
+  token?: string;
+  refreshToken?: string;
   user: User;
+  requires2FA?: boolean;
+  requiresSetup?: boolean;
+  tempToken?: string;
+  message?: string;
 }
 
 export const login = async (email: string, password: string): Promise<AuthResponse> => {
   const response = await api.post<AuthResponse>('/auth/login', { email, password });
-  if (response.data.success) {
+  if (response.data.success && response.data.token) {
+    localStorage.setItem('token', response.data.token);
+    localStorage.setItem('user', JSON.stringify(response.data.user));
+  }
+  // If requires2FA, don't store token yet - user must complete 2FA first
+  return response.data;
+};
+
+// Verify 2FA OTP for login
+export const verifyLoginOTP = async (
+  email: string,
+  otp: string,
+  tempToken: string
+): Promise<AuthResponse> => {
+  const response = await api.post<AuthResponse>('/auth/verify-login-otp', {
+    email,
+    otp,
+    tempToken,
+  });
+  if (response.data.success && response.data.token) {
     localStorage.setItem('token', response.data.token);
     localStorage.setItem('user', JSON.stringify(response.data.user));
   }
   return response.data;
 };
 
-export const register = async (name: string, email: string, password: string): Promise<AuthResponse> => {
-  const response = await api.post<AuthResponse>('/auth/register', { name, email, password });
-  if (response.data.success) {
+// Request new 2FA OTP
+export const request2FA = async (): Promise<{ success: boolean; message: string }> => {
+  const response = await api.post<{ success: boolean; message: string }>('/auth/request-2fa');
+  return response.data;
+};
+
+export const register = async (data: {
+  email: string;
+  password: string;
+  name: string;
+  role?: 'student';
+}): Promise<AuthResponse> => {
+  const response = await api.post<AuthResponse>('/auth/register', data);
+  if (response.data.success && response.data.token) {
     localStorage.setItem('token', response.data.token);
     localStorage.setItem('user', JSON.stringify(response.data.user));
   }

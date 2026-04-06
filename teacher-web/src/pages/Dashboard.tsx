@@ -31,6 +31,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import BookLoader from '../components/BookLoader';
 
 interface Stats {
   totalClasses: number;
@@ -482,18 +483,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[70vh]">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative">
-            <div className="w-12 h-12 rounded-full border-3 border-gray-200 border-t-gray-900 animate-spin" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Sparkles className="w-6 h-6 text-gray-900 animate-pulse" />
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-gray-500">
-            <Sparkles className="w-4 h-4 animate-pulse" />
-            <span className="animate-pulse">Loading...</span>
-          </div>
-        </div>
+        <BookLoader />
       </div>
     );
   }

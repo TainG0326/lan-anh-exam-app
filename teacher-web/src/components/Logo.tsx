@@ -3,7 +3,6 @@ import React from 'react';
 const Logo: React.FC<{ className?: string }> = ({ className = "w-12 h-12" }) => {
   return (
     <div className={`${className} relative`}>
-      {/* Outer circle */}
       <svg
         viewBox="0 0 120 120"
         className="w-full h-full"
@@ -12,10 +11,10 @@ const Logo: React.FC<{ className?: string }> = ({ className = "w-12 h-12" }) => 
       >
         {/* Outer teal circle */}
         <circle cx="60" cy="60" r="58" fill="#14B8A6" stroke="#0D9488" strokeWidth="2" />
-        
+
         {/* Inner teal circle */}
         <circle cx="60" cy="60" r="48" fill="#2DD4BF" />
-        
+
         {/* Open book icon at top */}
         <path
           d="M 40 35 Q 50 30 60 35 Q 70 30 80 35 L 80 50 Q 70 45 60 50 Q 50 45 40 50 Z"
@@ -28,7 +27,7 @@ const Logo: React.FC<{ className?: string }> = ({ className = "w-12 h-12" }) => 
           stroke="#0D9488"
           strokeWidth="1.5"
         />
-        
+
         {/* Letter L - dark blue */}
         <text
           x="45"
@@ -40,7 +39,7 @@ const Logo: React.FC<{ className?: string }> = ({ className = "w-12 h-12" }) => 
         >
           L
         </text>
-        
+
         {/* Letter A - teal */}
         <text
           x="65"
@@ -52,7 +51,7 @@ const Logo: React.FC<{ className?: string }> = ({ className = "w-12 h-12" }) => 
         >
           A
         </text>
-        
+
         {/* Golden arrow going through A */}
         <path
           d="M 55 85 L 75 55"
@@ -70,7 +69,7 @@ const Logo: React.FC<{ className?: string }> = ({ className = "w-12 h-12" }) => 
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        
+
         {/* Small golden star at bottom */}
         <path
           d="M 60 90 L 62 95 L 67 95 L 63 98 L 65 103 L 60 100 L 55 103 L 57 98 L 53 95 L 58 95 Z"
@@ -84,8 +83,3 @@ const Logo: React.FC<{ className?: string }> = ({ className = "w-12 h-12" }) => 
 };
 
 export default Logo;
-
-
-
-
-

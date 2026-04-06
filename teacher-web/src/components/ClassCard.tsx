@@ -1,7 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Users, BookOpen } from 'lucide-react';
-import GlassCard from './GlassCard';
 
 interface ClassCardProps {
   id: string;
@@ -23,72 +22,65 @@ const ClassCard: React.FC<ClassCardProps> = ({
   category = 'English'
 }) => {
   return (
-    <Link to={`/classes/${id}`}>
-      <GlassCard
-        className="h-full p-0 overflow-hidden"
-        hover={true}
-        glow={true}
-      >
-        {/* Image Thumbnail - aspect-video */}
-        <div className="relative aspect-video bg-gradient-to-br from-primary/20 to-blue-500/10 overflow-hidden">
+    <Link to={`/classes/${id}`} className="block group">
+      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-300">
+        {/* Image Thumbnail */}
+        <div className="relative aspect-video bg-gradient-to-br from-primary/10 to-blue-500/10 overflow-hidden">
           {image ? (
-            <img 
-              src={image} 
+            <img
+              src={image}
               alt={name}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
-              <BookOpen className="w-16 h-16 text-primary/30" />
+              <BookOpen className="w-16 h-16 text-primary/20" />
             </div>
           )}
-          
-          {/* Category Badge - Glass */}
-          <div className="absolute top-4 left-4">
-            <span className="px-3 py-1 bg-white/40 backdrop-blur-md text-xs font-semibold text-text-secondary rounded-full border border-white/30">
+
+          {/* Category Badge */}
+          <div className="absolute top-3 left-3">
+            <span className="px-3 py-1 bg-white/90 backdrop-blur-sm text-xs font-semibold text-slate-600 rounded-full border border-gray-200 shadow-sm">
               {category}
             </span>
           </div>
-          
+
           {/* Code Badge */}
-          <div className="absolute top-4 right-4">
-            <span className="px-3 py-1 bg-white/40 backdrop-blur-md font-mono text-xs font-semibold text-text-primary rounded-full border border-white/30">
+          <div className="absolute top-3 right-3">
+            <span className="px-3 py-1 bg-white/90 backdrop-blur-sm font-mono text-xs font-semibold text-slate-700 rounded-full border border-gray-200 shadow-sm">
               {code}
             </span>
           </div>
-          
-          {/* Gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
         </div>
 
         {/* Card Content */}
-        <div className="p-6 space-y-4">
-          {/* Title - Bold Navy */}
+        <div className="p-5 space-y-3">
+          {/* Title */}
           <div>
-            <h3 className="text-lg font-bold text-text-primary tracking-tight mb-1 group-hover:text-primary transition-colors">
+            <h3 className="text-lg font-bold text-slate-800 tracking-tight mb-1 group-hover:text-primary transition-colors">
               {name}
             </h3>
             {description && (
-              <p className="text-sm text-text-secondary line-clamp-2">
+              <p className="text-sm text-slate-500 line-clamp-2">
                 {description}
               </p>
             )}
           </div>
 
           {/* Stats */}
-          <div className="flex items-center gap-4 text-sm text-text-secondary">
+          <div className="flex items-center gap-4 text-sm text-slate-500">
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4" />
               <span>{studentCount} students</span>
             </div>
           </div>
 
-          {/* CTA Button - Glass */}
-          <button className="w-full bg-white/30 hover:bg-white/40 backdrop-blur-lg border border-white/40 shadow-lg font-bold py-3 px-4 rounded-2xl transition-all duration-300 hover:scale-[1.02] text-sm text-text-primary">
+          {/* CTA Button */}
+          <button className="w-full bg-gray-50 hover:bg-gray-100 border border-gray-200 font-semibold py-2.5 px-4 rounded-xl transition-all duration-300 text-sm text-slate-700">
             View Class
           </button>
         </div>
-      </GlassCard>
+      </div>
     </Link>
   );
 };

@@ -6,6 +6,7 @@ interface GlassCardProps {
   hover?: boolean;
   glow?: boolean;
   onClick?: () => void;
+  style?: React.CSSProperties;
 }
 
 /**
@@ -23,11 +24,13 @@ const GlassCard: React.FC<GlassCardProps> = ({
   className = '',
   hover = true,
   glow = false,
-  onClick
+  onClick,
+  style,
 }) => {
   return (
     <div
       onClick={onClick}
+      style={style}
       className={`
         relative
         bg-white/20

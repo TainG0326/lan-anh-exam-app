@@ -12,15 +12,19 @@ import ExamResults from './pages/ExamResults';
 import Assignments from './pages/Assignments';
 import Gradebook from './pages/Gradebook';
 import Profile from './pages/Profile';
+import AuthCallback from './pages/AuthCallback';
 import Layout from './components/Layout';
+import BookLoader from './components/BookLoader';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-xl">Loading...</div>
+      <div className="teacher-app-bg min-h-screen">
+        <div className="teacher-app-bg-overlay min-h-screen flex items-center justify-center">
+          <BookLoader />
+        </div>
       </div>
     );
   }
@@ -40,6 +44,8 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/dashboard" element={<Navigate to="/" replace />} />
       <Route
         path="/"
         element={

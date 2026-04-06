@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { login, register, verifyLoginOTP, request2FA } from '../services/authService';
+import { login, register } from '../services/authService';
 import { signInWithGoogle, forgotPassword } from '../services/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -11,7 +11,10 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
+  CheckCircle,
   AlertCircle,
+  X,
+  KeyRound
 } from 'lucide-react';
 
 type AuthMode = 'login' | 'register';
@@ -26,13 +29,6 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string; name?: string }>({});
   const [searchParams] = useSearchParams();
-
-  // 2FA states
-  const [requires2FA, setRequires2FA] = useState(false);
-  const [otp, setOtp] = useState('');
-  const [tempToken, setTempToken] = useState('');
-  const [requiresSetup, setRequiresSetup] = useState(false);
-  const [resendingOTP, setResendingOTP] = useState(false);
 
   const navigate = useNavigate();
   const { user, setUser } = useAuth();
@@ -121,11 +117,6 @@ export default function Login() {
             const redirectUrl = sessionStorage.getItem('redirectUrl') || '/dashboard';
             sessionStorage.removeItem('redirectUrl');
             navigate(redirectUrl, { replace: true });
-          } else if (loginResponse.requires2FA) {
-            setRequires2FA(true);
-            setTempToken(loginResponse.tempToken || '');
-            setRequiresSetup(loginResponse.requiresSetup || false);
-            toast('Vui lòng nhập mã xác thực 2FA đã được gửi đến email của bạn.');
           }
         }
       } else {
@@ -137,11 +128,6 @@ export default function Login() {
           const redirectUrl = sessionStorage.getItem('redirectUrl') || '/dashboard';
           sessionStorage.removeItem('redirectUrl');
           navigate(redirectUrl, { replace: true });
-        } else if (response.requires2FA) {
-          setRequires2FA(true);
-          setTempToken(response.tempToken || '');
-          setRequiresSetup(response.requiresSetup || false);
-          toast('Vui lòng nhập mã xác thực 2FA đã được gửi đến email của bạn.');
         }
       }
     } catch (error: any) {
@@ -149,45 +135,6 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleVerifyOTP = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const response = await verifyLoginOTP(email, otp, tempToken);
-      if (response.success) {
-        setUser(response.user);
-        localStorage.setItem('sessionActive', Date.now().toString());
-        toast.success(t('toast.welcomeBack'));
-        const redirectUrl = sessionStorage.getItem('redirectUrl') || '/dashboard';
-        sessionStorage.removeItem('redirectUrl');
-        navigate(redirectUrl, { replace: true });
-      }
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || '2FA verification failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResendOTP = async () => {
-    setResendingOTP(true);
-    try {
-      await request2FA();
-      toast.success('Mã xác thực mới đã được gửi đến email của bạn!');
-    } catch (error: any) {
-      toast.error('Không thể gửi mã. Vui lòng thử lại.');
-    } finally {
-      setResendingOTP(false);
-    }
-  };
-
-  const handleBackToLogin = () => {
-    setRequires2FA(false);
-    setOtp('');
-    setTempToken('');
-    setRequiresSetup(false);
   };
 
   const handleGoogleSignIn = async () => {
@@ -206,134 +153,44 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-2 sm:px-4 relative overflow-hidden bg-gradient-to-br from-green-400 via-emerald-400 to-teal-500">
-      {/* Desktop Background - hidden on mobile, shown on md+ */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat hidden md:block"
-        style={{ 
-          backgroundImage: 'url(/login-bg.png)',
-        }}
-      />
-      {/* Mobile Background - shown only on mobile, hidden on md+ */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat md:hidden"
-        style={{ 
-          backgroundImage: 'url(/login-bg-mobile.png)',
-        }}
-      />
-      {/* Overlay */}
-      <div className="absolute inset-0 bg-white/30" />
-
+    <div className="min-h-screen flex items-center justify-center bg-login-gradient px-4">
+      {/* Main Container */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md sm:max-w-[420px] relative z-10 px-3 sm:px-0"
+        className="w-full max-w-md sm:max-w-[420px]"
       >
         {/* Header with Language Switcher */}
-        <div className="flex justify-end mb-3 sm:mb-4">
+        <div className="flex justify-end mb-4">
           <LanguageSwitcher />
         </div>
 
         {/* Logo Section */}
-        <div className="text-center mb-5 sm:mb-8">
+        <div className="text-center mb-6 sm:mb-8">
           <img
             src="/logo.png"
             alt="Lan Anh English Logo"
-            className="w-auto h-20 sm:h-28 object-contain mx-auto mb-2 sm:mb-4"
+            className="w-auto h-24 sm:h-28 object-contain mx-auto mb-3 sm:mb-4"
           />
-          <h1 className="text-lg sm:text-2xl font-semibold text-text-primary">
+          <h1 className="text-xl sm:text-2xl font-semibold text-text-primary">
             Lan Anh English
           </h1>
-          <p className="text-xs sm:text-sm text-text-secondary mt-1">
+          <p className="text-sm text-text-secondary mt-1">
             {t('login.slogan')}
           </p>
         </div>
 
-        {/* Card with light glass effect */}
-        <div className="card p-5 sm:p-8 bg-white/80 backdrop-blur-sm shadow-2xl border border-white/40 rounded-2xl">
-
-          {/* 2FA Verification Form */}
-          {requires2FA ? (
-            <>
-              {/* Header */}
-              <div className="text-center mb-5 sm:mb-6">
-                <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-primary/10 flex items-center justify-center">
-                  <svg className="w-7 h-7 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                </div>
-                <h2 className="text-lg sm:text-xl font-semibold text-text-primary mb-1">
-                  {requiresSetup ? 'Xác thực email lần đầu' : 'Xác thực hai yếu tố'}
-                </h2>
-                <p className="text-xs sm:text-sm text-text-secondary">
-                  Nhập mã xác thực đã được gửi đến email của bạn
-                </p>
-              </div>
-
-              {/* OTP Form */}
-              <form onSubmit={handleVerifyOTP} className="space-y-4">
-                <input
-                  id="otp"
-                  name="otp"
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
-                  required
-                  className="input-field w-full text-center text-lg tracking-[0.5em]"
-                  placeholder="000000"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                />
-
-                <button
-                  type="submit"
-                  disabled={loading || otp.length !== 6}
-                  className="btn-primary w-full flex items-center justify-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Đang xác thực...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Xác thực</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-
-                <div className="flex items-center justify-between text-sm">
-                  <button
-                    type="button"
-                    onClick={handleBackToLogin}
-                    className="text-text-secondary hover:text-primary transition-colors"
-                  >
-                    Quay lại đăng nhập
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleResendOTP}
-                    disabled={resendingOTP}
-                    className="text-primary hover:text-primary-hover transition-colors disabled:opacity-50"
-                  >
-                    {resendingOTP ? 'Đang gửi...' : 'Gửi lại mã'}
-                  </button>
-                </div>
-              </form>
-            </>
-          ) : (
-            <>
-              {/* Header */}
-              <div className="text-center mb-5 sm:mb-6">
-                <h2 className="text-lg sm:text-xl font-semibold text-text-primary mb-1">
-                  {mode === 'login' ? t('login.welcomeBack') : t('login.createAccount')}
-                </h2>
-                <p className="text-xs sm:text-sm text-text-secondary">
-                  {mode === 'login' ? t('login.signInToContinue') : t('login.joinToday')}
-                </p>
-              </div>
+        {/* Card */}
+        <div className="card p-6 sm:p-8">
+          {/* Header */}
+          <div className="text-center mb-6">
+            <h2 className="text-xl font-semibold text-text-primary mb-1">
+              {mode === 'login' ? t('login.welcomeBack') : t('login.createAccount')}
+            </h2>
+            <p className="text-sm text-text-secondary">
+              {mode === 'login' ? t('login.signInToContinue') : t('login.joinToday')}
+            </p>
+          </div>
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -485,10 +342,10 @@ export default function Login() {
               </button>
             </p>
           </div>
-            </>
-          )}
         </div>
       </motion.div>
     </div>
   );
 }
+
+

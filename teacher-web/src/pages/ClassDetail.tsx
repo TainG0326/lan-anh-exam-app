@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { getClassById } from '../services/classService';
 import { ArrowLeft, Users, BookOpen, GraduationCap, Copy, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
+import BookLoader from '../components/BookLoader';
 
 export default function ClassDetail() {
   const { id } = useParams<{ id: string }>();
@@ -39,7 +40,7 @@ export default function ClassDetail() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="animate-pulse text-text-secondary">Loading...</div>
+        <BookLoader />
       </div>
     );
   }

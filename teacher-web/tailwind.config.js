@@ -8,65 +8,78 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: "#D4E95D", // Premium Lime Green
-        "primary-foreground": "#000000",
-        "primary-hover": "#C4D94D",
-        background: "#F8FAFC", // Primary app background
-        "background-light": "#FFFFFF", // Card background
-        border: "#E2E8F0", // Subtle borders
-        "text-primary": "#0F172A", // Navy for headings
-        "text-secondary": "#64748B", // Body text
-        "text-muted": "#94A3B8",
-        // Glassmorphism colors
-        glass: {
-          100: 'rgba(255, 255, 255, 0.1)',
-          200: 'rgba(255, 255, 255, 0.2)',
-          300: 'rgba(255, 255, 255, 0.3)',
-          400: 'rgba(255, 255, 255, 0.4)',
-          dark: 'rgba(15, 23, 42, 0.1)',
-          darkHover: 'rgba(15, 23, 42, 0.15)',
+        primary: {
+          DEFAULT: "#5F8D78",
+          hover: "#4A6F5E",
+          light: "#E8F0EB",
+          dark: "#3D5F50",
         },
+        secondary: "#DCE6E1",
+        background: {
+          DEFAULT: "#F7FAF9",
+          light: "#F9FBF9",
+          dark: "#1A2321",
+        },
+        surface: {
+          DEFAULT: "#FFFFFF",
+          hover: "#F3F4F6",
+        },
+        border: {
+          DEFAULT: "#E5E7EB",
+          light: "#F3F4F6",
+        },
+        text: {
+          primary: "#1F2937",
+          secondary: "#6B7280",
+          muted: "#9CA3AF",
+        },
+        success: {
+          DEFAULT: "#3D7A4F",
+          light: "#D4E8D7",
+        },
+        warning: {
+          DEFAULT: "#B86E00",
+          light: "#FFE8D6",
+        },
+        error: {
+          DEFAULT: "#C53030",
+          light: "#FDE8E8",
+        },
+        info: {
+          DEFAULT: "#4A6FA5",
+          light: "#DCE4F2",
+        },
+        sage: {
+          light: "#E8F0EB",
+        },
+        cream: "#FCFCF9",
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
+        serif: ['Playfair Display', 'serif'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
       },
       borderRadius: {
-        DEFAULT: "0.5rem",
-        'xl': '1rem',
-        '2xl': '1.5rem',
-        '3xl': '1.5rem', // 24px
+        DEFAULT: "4px",
+        sm: "4px",
+        lg: "8px",
+        xl: "12px",
+        "2xl": "16px",
+        "3xl": "24px",
       },
       boxShadow: {
-        'soft': '0 1px 2px 0 rgb(0 0 0 / 0.05)',
-        'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
-        'glass-hover': '0 12px 48px 0 rgba(31, 38, 135, 0.2)',
-        'glow-primary': '0 0 20px rgba(212, 233, 93, 0.3)',
-        'glow-blue': '0 0 20px rgba(59, 130, 246, 0.3)',
-        'glow-green': '0 0 20px rgba(34, 197, 94, 0.3)',
+        soft: "0 4px 16px -6px rgba(0,0,0,0.08)",
+        card: "0 4px 16px -6px rgba(0,0,0,0.08)",
+        button: "0 2px 8px rgba(46,125,107,0.25)",
+        "soft-lg": "0 8px 24px -6px rgba(0,0,0,0.1)",
       },
-      letterSpacing: {
-        'tight': '-0.025em',
-        'tighter': '-0.05em',
+      spacing: {
+        "18": "4.5rem",
+        "22": "5.5rem",
       },
-      backdropBlur: {
-        xs: '2px',
+      transitionTimingFunction: {
+        elegant: "cubic-bezier(0.4, 0, 0.2, 1)",
       },
-      animation: {
-        'float': 'float 6s ease-in-out infinite',
-        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'shimmer': 'shimmer 2s linear infinite',
-      },
-      keyframes: {
-        float: {
-          '0%, 100%': { transform: 'translateY(0)' },
-          '50%': { transform: 'translateY(-10px)' },
-        },
-        shimmer: {
-          '0%': { backgroundPosition: '-200% 0' },
-          '100%': { backgroundPosition: '200% 0' },
-        },
-      },
-    }
+    },
   },
   plugins: [],
 }

@@ -5,6 +5,7 @@ import { FileText, Plus, Clock, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format, isValid } from 'date-fns';
 import GlassCard from '../components/GlassCard';
+import BookLoader from '../components/BookLoader';
 
 export default function Exams() {
   const [exams, setExams] = useState<Exam[]>([]);
@@ -46,7 +47,7 @@ export default function Exams() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="animate-pulse text-text-secondary text-lg">Loading...</div>
+        <BookLoader />
       </div>
     );
   }

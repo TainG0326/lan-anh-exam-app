@@ -4,6 +4,7 @@ import { Plus, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ClassCard from '../components/ClassCard';
 import GlassCard from '../components/GlassCard';
+import BookLoader from '../components/BookLoader';
 
 export default function Classes() {
   const [classes, setClasses] = useState<Class[]>([]);
@@ -46,7 +47,7 @@ export default function Classes() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="animate-pulse text-text-secondary text-lg">Loading...</div>
+        <BookLoader />
       </div>
     );
   }
