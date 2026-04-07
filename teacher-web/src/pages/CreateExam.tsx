@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createExam } from '../services/examService';
 import { getClasses, Class } from '../services/classService';
-import { parseFile } from '../services/questionParserService';
+import { aiImportService } from '../services/aiImportService';
 import { Plus, Trash2, Upload, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useEffect } from 'react';
@@ -78,27 +78,37 @@ export default function CreateExam() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check file type
-    if (!file.name.endsWith('.txt') && !file.name.endsWith('.docx')) {
-      toast.error('Only .txt or .docx files are accepted');
+    // AI import hỗ trợ: PDF, DOCX, TXT, JPG, PNG, WEBP
+    const allowedExts = ['.pdf', '.docx', '.doc', '.txt', '.jpg', '.jpeg', '.png', '.webp'];
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    if (!allowedExts.includes(ext)) {
+      toast.error('Chấp nhận: PDF, DOCX, TXT, JPG, PNG, WEBP');
       return;
     }
 
     setUploading(true);
     try {
-      const result = await parseFile(file);
-      if (result.questions && result.questions.length > 0) {
-        // Add parsed questions to existing questions
-        setQuestions([...questions, ...result.questions]);
-        toast.success(`Added ${result.count} questions from file!`);
+      const result = await aiImportService.importFile(file);
+      if (result.questions?.length) {
+        // Map từ AI response → question model của CreateExam
+        const mapped = result.questions.map((q) => ({
+          question: q.question,
+          type: q.type || ('multiple-choice' as const),
+          options: q.options?.length ? q.options : ['', '', '', ''],
+          correctAnswer: q.correctAnswer,
+          points: q.points ?? 1,
+          explanation: q.explanation || '',
+        }));
+        setQuestions((prev) => [...prev, ...mapped]);
+        toast.success(`Đã tạo ${result.count} câu bằng AI`);
       } else {
-        toast.error('No questions found in file');
+        toast.error('AI không trích xuất được câu hỏi từ file này');
       }
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to parse file');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Import AI thất bại';
+      toast.error(msg);
     } finally {
       setUploading(false);
-      // Reset file input
       e.target.value = '';
     }
   };
@@ -283,13 +293,13 @@ export default function CreateExam() {
                 ) : (
                   <>
                     <Upload className="w-4 h-4 mr-2 shrink-0" />
-                    <span className="hidden sm:inline">Import AI (.txt, .docx)</span>
+                    <span className="hidden sm:inline">AI Import (PDF/DOCX/TXT/IMG)</span>
                     <span className="sm:hidden">Import AI</span>
                   </>
                 )}
                 <input
                   type="file"
-                  accept=".txt,.docx"
+                  accept=".pdf,.docx,.doc,.txt,.jpg,.jpeg,.png,.webp"
                   onChange={handleFileUpload}
                   disabled={uploading}
                   className="hidden"

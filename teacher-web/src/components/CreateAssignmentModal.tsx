@@ -3,7 +3,7 @@ import { X, Plus, Trash2, BookOpen, FileText, Upload, Loader2 } from 'lucide-rea
 import toast from 'react-hot-toast';
 import { createAssignment } from '../services/assignmentService';
 import { getClasses, Class } from '../services/classService';
-import { parseFile } from '../services/questionParserService';
+import { aiImportService } from '../services/aiImportService';
 
 interface Question {
   question: string;
@@ -92,29 +92,32 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSuccess }: Cr
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.endsWith('.txt') && !file.name.endsWith('.docx')) {
-      toast.error('Chỉ chấp nhận file .txt hoặc .docx');
+    // AI import hỗ trợ: PDF, DOCX, TXT, JPG, PNG, WEBP
+    const allowedExts = ['.pdf', '.docx', '.doc', '.txt', '.jpg', '.jpeg', '.png', '.webp'];
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    if (!allowedExts.includes(ext)) {
+      toast.error('Chấp nhận: PDF, DOCX, TXT, JPG, PNG, WEBP');
       return;
     }
 
     setUploading(true);
     try {
-      const result = await parseFile(file);
+      const result = await aiImportService.importFile(file);
       if (result.questions?.length) {
         const mapped: Question[] = result.questions.map((q) => ({
           question: q.question,
-          type: 'multiple-choice',
+          type: 'multiple-choice' as const,
           options: q.options?.length ? q.options : ['', '', '', ''],
           correctAnswer: q.correctAnswer,
           points: q.points ?? 10,
         }));
         setQuestions((prev) => [...prev, ...mapped]);
-        toast.success(`Đã thêm ${result.count} câu từ file (AI import)`);
+        toast.success(`Đã tạo ${result.count} câu bằng AI`);
       } else {
-        toast.error('Không tìm thấy câu hỏi trong file');
+        toast.error('AI không trích xuất được câu hỏi từ file này');
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Phân tích file thất bại';
+      const msg = err instanceof Error ? err.message : 'Import AI thất bại';
       toast.error(msg);
     } finally {
       setUploading(false);
@@ -323,12 +326,12 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSuccess }: Cr
                   ) : (
                     <>
                       <Upload className="w-3.5 h-3.5" />
-                      Import AI (.txt, .docx)
+                      AI Import (PDF/DOCX/TXT/IMG)
                     </>
                   )}
                   <input
                     type="file"
-                    accept=".txt,.docx"
+                    accept=".pdf,.docx,.doc,.txt,.jpg,.jpeg,.png,.webp"
                     onChange={handleFileUpload}
                     disabled={uploading}
                     className="hidden"
