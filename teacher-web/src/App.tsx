@@ -5,10 +5,12 @@ import { LanguageProvider } from './context/LanguageContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Classes from './pages/Classes';
+import CreateClass from './pages/CreateClass';
 import ClassDetail from './pages/ClassDetail';
 import Exams from './pages/Exams';
 import CreateExam from './pages/CreateExam';
 import ExamResults from './pages/ExamResults';
+import CreateAssignment from './pages/CreateAssignment';
 import Assignments from './pages/Assignments';
 import Gradebook from './pages/Gradebook';
 import Profile from './pages/Profile';
@@ -56,11 +58,13 @@ function AppRoutes() {
       >
         <Route index element={<Dashboard />} />
         <Route path="classes" element={<Classes />} />
+        <Route path="classes/create" element={<CreateClass />} />
         <Route path="classes/:id" element={<ClassDetail />} />
         <Route path="exams" element={<Exams />} />
         <Route path="exams/create" element={<CreateExam />} />
         <Route path="exams/:examId/results" element={<ExamResults />} />
         <Route path="assignments" element={<Assignments />} />
+        <Route path="assignments/create" element={<CreateAssignment />} />
         <Route path="gradebook" element={<Gradebook />} />
         <Route path="profile" element={<Profile />} />
       </Route>

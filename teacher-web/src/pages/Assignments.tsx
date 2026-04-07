@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getAssignments } from '../services/assignmentService';
 import { BookOpen, Plus, Clock, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format, isValid } from 'date-fns';
 import GlassCard from '../components/GlassCard';
-import CreateAssignmentModal from '../components/CreateAssignmentModal';
 import BookLoader from '../components/BookLoader';
 
 export default function Assignments() {
+  const navigate = useNavigate();
   const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     loadAssignments();
@@ -48,19 +48,13 @@ export default function Assignments() {
           </p>
         </div>
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => navigate('/assignments/create')}
           className="inline-flex items-center justify-center px-6 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-all duration-300 hover:scale-[1.02] shadow-lg"
         >
           <Plus className="w-5 h-5 mr-2" />
           Create New Assignment
         </button>
       </div>
-
-      <CreateAssignmentModal
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onSuccess={loadAssignments}
-      />
 
       {/* Assignments Table - Glass Container */}
       <GlassCard className="p-0 overflow-hidden" hover={false}>
@@ -164,7 +158,10 @@ export default function Assignments() {
             </div>
             <h3 className="text-lg font-bold text-text-primary mb-2">No assignments yet</h3>
             <p className="text-text-secondary text-sm mb-6">Create a new assignment to get started</p>
-            <button className="px-6 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-all duration-300 hover:scale-[1.02]">
+            <button
+              onClick={() => navigate('/assignments/create')}
+              className="px-6 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-all duration-300 hover:scale-[1.02]"
+            >
               Create Assignment
             </button>
           </div>
