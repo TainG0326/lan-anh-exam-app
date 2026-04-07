@@ -12,6 +12,8 @@ import classRoutes from './routes/classRoutes.js';
 import assignmentRoutes from './routes/assignmentRoutes.js';
 import questionParserRoutes from './routes/questionParserRoutes.js';
 import examRoutes from './routes/examRoutes.js';
+import aiImportRoutes from './routes/aiImportRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -19,32 +21,35 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// CORS configuration - allow all origins for development
+// CORS configuration — allow all origins for development + all Vercel production URLs
+const allowedOrigins = [
+  'http://localhost:3001',
+  'http://localhost:3002',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  /\.vercel\.app$/,
+  /\.vercel\.app\/(.*)/,
+];
+
 const corsOptions = {
   origin: function (origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (mobile, curl, server-to-server)
     if (!origin) return callback(null, true);
 
-    // Allow localhost ports for development (3001 for teacher-web, 3002 for student-web)
-    if (
-      origin === 'http://localhost:3001' ||
-      origin === 'http://localhost:3002' ||
-      origin === 'http://localhost:5173' ||
-      origin === 'http://localhost:5174' ||
-      origin.startsWith('http://localhost:')
-    ) {
-      return callback(null, true);
-    }
+    // Check against regex patterns
+    const allowed = allowedOrigins.some((o) =>
+      o instanceof RegExp ? o.test(origin) : origin === o
+    );
+    if (allowed) return callback(null, true);
 
-    // Allow Vercel preview/production URLs
-    if (origin.includes('vercel.app') || origin.includes('teacher-web') || origin.includes('student-web')) {
-      return callback(null, true);
-    }
+    // Fallback: allow any vercel.app domain
+    if (origin.includes('.vercel.app')) return callback(null, true);
 
-    // For development, allow all
     callback(null, true);
   },
-  credentials: true, // Allow cookies
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'Origin', 'Accept'],
 };
 
 app.use(cors(corsOptions));
@@ -86,6 +91,8 @@ app.use('/api/classes', classRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/question-parser', questionParserRoutes);
 app.use('/api/exams', examRoutes);
+app.use('/api/ai', aiImportRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Error handling middleware
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
