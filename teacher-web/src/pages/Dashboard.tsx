@@ -488,30 +488,17 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-2xl font-semibold text-gray-800">
-              Good {currentTime.getHours() < 12 ? 'Morning' : currentTime.getHours() < 18 ? 'Afternoon' : 'Evening'}
-            </h1>
-          </div>
-          <p className="text-gray-500">
-            {stats.totalClasses > 0
-              ? `You have ${stats.totalClasses} class${stats.totalClasses > 1 ? 'es' : ''} to manage.`
-              : 'Get started by creating your first class.'}
-          </p>
+      <div>
+        <div className="flex items-center gap-3 mb-2">
+          <h1 className="text-2xl font-semibold text-gray-800">
+            Good {currentTime.getHours() < 12 ? 'Morning' : currentTime.getHours() < 18 ? 'Afternoon' : 'Evening'}
+          </h1>
         </div>
-
-        <div className="flex items-center gap-2">
-          <img
-            src="https://api.dicebear.com/7.x/avataaars/svg?seed=Teacher"
-            alt="User"
-            className="w-9 h-9 rounded-lg"
-          />
-          <div className="hidden lg:block">
-            <p className="text-sm font-medium text-gray-700">Teacher</p>
-          </div>
-        </div>
+        <p className="text-gray-500">
+          {stats.totalClasses > 0
+            ? `You have ${stats.totalClasses} class${stats.totalClasses > 1 ? 'es' : ''} to manage.`
+            : 'Get started by creating your first class.'}
+        </p>
       </div>
 
       {/* Quick Stats Grid - Pastel nhẹ nhàng */}
