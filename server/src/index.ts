@@ -65,12 +65,12 @@ const __dirname = path.dirname(__filename);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Health check endpoint
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', message: 'Server is running' });
 });
 
 // Root endpoint
-app.get('/', (req: Request, res: Response) => {
+app.get('/', (_req: Request, res: Response) => {
   res.json({
     name: 'English Exam API',
     version: '1.0.0',
@@ -81,6 +81,8 @@ app.get('/', (req: Request, res: Response) => {
       assignments: '/api/assignments',
       'question-parser': '/api/question-parser',
       exams: '/api/exams',
+      ai: '/api/ai',
+      notifications: '/api/notifications',
     },
   });
 });
@@ -108,19 +110,12 @@ app.use((req: Request, res: Response) => {
   res.status(404).json({ message: 'Route not found' });
 });
 
-// Start server
+// Start server — skip Supabase connection check; Vercel cold starts need fast startup
 const startServer = async () => {
   try {
-    // Test Supabase connection
-    console.log('🔌 Testing Supabase connection...');
-    const connected = await testConnection();
-    
-    if (!connected) {
-      console.warn('⚠️  Supabase connection failed, but server will continue...');
-    }
-
+    console.log('🚀 Starting server...');
     app.listen(PORT, () => {
-      console.log(`🚀 Server is running on http://localhost:${PORT}`);
+      console.log(`✅ Server running on port ${PORT}`);
       console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
     });
   } catch (error: any) {
