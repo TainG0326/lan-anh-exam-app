@@ -13,6 +13,11 @@ import {
   ArrowRight,
   AlertCircle,
 } from 'lucide-react';
+import {
+  TEACHER_LOGO_SRC,
+  TEACHER_LOGIN_BG_DESKTOP,
+  TEACHER_LOGIN_BG_MOBILE,
+} from '../constants/branding';
 
 type AuthMode = 'login' | 'register';
 
@@ -206,19 +211,19 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-2 sm:px-4 relative overflow-hidden bg-gradient-to-br from-green-400 via-emerald-400 to-teal-500">
+    <div className="min-h-screen flex items-center justify-center px-2 sm:px-4 relative overflow-hidden bg-slate-100">
       {/* Desktop Background - hidden on mobile, shown on md+ */}
       <div 
         className="absolute inset-0 bg-cover bg-center bg-no-repeat hidden md:block"
         style={{ 
-          backgroundImage: 'url(/login-bg.png)',
+          backgroundImage: `url(${TEACHER_LOGIN_BG_DESKTOP})`,
         }}
       />
       {/* Mobile Background - shown only on mobile, hidden on md+ */}
       <div 
         className="absolute inset-0 bg-cover bg-center bg-no-repeat md:hidden"
         style={{ 
-          backgroundImage: 'url(/login-bg-mobile.png)',
+          backgroundImage: `url(${TEACHER_LOGIN_BG_MOBILE})`,
         }}
       />
       {/* Overlay */}
@@ -237,9 +242,9 @@ export default function Login() {
         {/* Logo Section */}
         <div className="text-center mb-5 sm:mb-8">
           <img
-            src="/logo.png"
-            alt="Lan Anh English Logo"
-            className="w-auto h-20 sm:h-28 object-contain mx-auto mb-2 sm:mb-4"
+            src={TEACHER_LOGO_SRC}
+            alt="Học viện Anh ngữ Lan Anh"
+            className="w-auto h-24 sm:h-32 object-contain mx-auto mb-2 sm:mb-4 drop-shadow-sm"
           />
           <h1 className="text-lg sm:text-2xl font-semibold text-text-primary">
             Lan Anh English

@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { X, Plus, Trash2, BookOpen, Clock, FileText } from 'lucide-react';
+import { X, Plus, Trash2, BookOpen, FileText, Upload, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { createAssignment } from '../services/assignmentService';
 import { getClasses, Class } from '../services/classService';
+import { parseFile } from '../services/questionParserService';
 
 interface Question {
   question: string;
@@ -29,6 +30,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSuccess }: Cr
     dueDate: '',
   });
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState<Question>({
     question: '',
     type: 'multiple-choice',
@@ -84,6 +86,40 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSuccess }: Cr
 
   const removeQuestion = (index: number) => {
     setQuestions(questions.filter((_, i) => i !== index));
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.txt') && !file.name.endsWith('.docx')) {
+      toast.error('Chỉ chấp nhận file .txt hoặc .docx');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const result = await parseFile(file);
+      if (result.questions?.length) {
+        const mapped: Question[] = result.questions.map((q) => ({
+          question: q.question,
+          type: 'multiple-choice',
+          options: q.options?.length ? q.options : ['', '', '', ''],
+          correctAnswer: q.correctAnswer,
+          points: q.points ?? 10,
+        }));
+        setQuestions((prev) => [...prev, ...mapped]);
+        toast.success(`Đã thêm ${result.count} câu từ file (AI import)`);
+      } else {
+        toast.error('Không tìm thấy câu hỏi trong file');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Phân tích file thất bại';
+      toast.error(msg);
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -265,13 +301,40 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSuccess }: Cr
 
           {/* Questions */}
           <div>
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <h3 className="text-sm font-semibold text-gray-200">
                 Câu hỏi ({questions.length})
               </h3>
-              <span className="text-xs px-2 py-1 rounded-lg" style={{ background: 'rgba(123,163,137,0.15)', color: '#7BA389' }}>
-                Tổng: {totalPoints} điểm
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs px-2 py-1 rounded-lg" style={{ background: 'rgba(123,163,137,0.15)', color: '#7BA389' }}>
+                  Tổng: {totalPoints} điểm
+                </span>
+                <label
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-opacity ${
+                    uploading ? 'opacity-60 pointer-events-none' : 'hover:bg-white/5'
+                  }`}
+                  style={{ border: '1px solid rgba(255,255,255,0.12)', color: '#9CA3AF' }}
+                >
+                  {uploading ? (
+                    <span className="flex items-center gap-2 text-[#7BA389]">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                      Đang xử lý AI...
+                    </span>
+                  ) : (
+                    <>
+                      <Upload className="w-3.5 h-3.5" />
+                      Import AI (.txt, .docx)
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept=".txt,.docx"
+                    onChange={handleFileUpload}
+                    disabled={uploading}
+                    className="hidden"
+                  />
+                </label>
+              </div>
             </div>
 
             {/* Add Question Form */}

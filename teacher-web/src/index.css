@@ -18,9 +18,9 @@ code {
     monospace;
 }
 
-/* === App background (Teacher UIUX latest) === */
+/* === App background (Teacher UIUX — desktop / mobile) === */
 .teacher-app-bg {
-  background-image: url("/image background for desktop.png");
+  background-image: url("/image%20background%20for%20desktop.png");
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -29,7 +29,7 @@ code {
 
 @media (max-width: 768px) {
   .teacher-app-bg {
-    background-image: url("/backround image for mobile.png");
+    background-image: url("/backround%20image%20for%20mobile.png");
     background-attachment: scroll;
   }
 }

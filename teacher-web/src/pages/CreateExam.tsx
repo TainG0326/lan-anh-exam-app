@@ -6,6 +6,7 @@ import { parseFile } from '../services/questionParserService';
 import { Plus, Trash2, Upload, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useEffect } from 'react';
+import BookLoader from '../components/BookLoader';
 
 export default function CreateExam() {
   const navigate = useNavigate();
@@ -266,10 +267,26 @@ export default function CreateExam() {
               Questions ({questions.length})
             </h2>
             <div className="flex items-center gap-3">
-              <label className="inline-flex items-center px-3 sm:px-4 py-2 border border-gray-300 rounded-md shadow-sm text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
-                <Upload className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">{uploading ? 'Processing...' : 'Upload file'}</span>
-                <span className="sm:hidden">{uploading ? '...' : 'Upload'}</span>
+              <label
+                className={`inline-flex items-center px-3 sm:px-4 py-2 border border-gray-300 rounded-md shadow-sm text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer ${
+                  uploading ? 'opacity-70 pointer-events-none' : ''
+                }`}
+              >
+                {uploading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="inline-flex scale-[0.45] origin-left -my-3">
+                      <BookLoader label="" />
+                    </span>
+                    <span className="hidden sm:inline">Đang import AI...</span>
+                    <span className="sm:hidden">...</span>
+                  </span>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2 shrink-0" />
+                    <span className="hidden sm:inline">Import AI (.txt, .docx)</span>
+                    <span className="sm:hidden">Import AI</span>
+                  </>
+                )}
                 <input
                   type="file"
                   accept=".txt,.docx"
@@ -285,7 +302,7 @@ export default function CreateExam() {
             <div className="mb-4 p-4 border-2 border-dashed border-gray-300 rounded-lg text-center">
               <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
               <p className="text-sm text-gray-600 mb-2">
-                No questions yet. Add questions manually or upload a file.
+                Chưa có câu hỏi. Thêm thủ công hoặc import file — server phân tích bằng AI.
               </p>
               <p className="text-xs text-gray-500">
                 File format: Question 1: Question text?<br />
