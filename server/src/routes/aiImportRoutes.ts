@@ -42,6 +42,7 @@ const upload = multer({
   },
 });
 export const aiUploadMiddleware = upload.single('file');
+export const aiUploadArrayMiddleware = upload.array('images', 50);
 
 /** Google đã ngừng nhiều bản gemini-1.5-flash trên v1beta → dùng model ổn định mới. Có thể override bằng GEMINI_MODEL trên Render. */
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
@@ -184,119 +185,8 @@ router.post('/import', aiUploadMiddleware, async (req: AuthRequest, res) => {
       return res.status(500).json({ success: false, message: 'GEMINI_API_KEY is not configured on the server' });
     }
 
-    // 1. Extract text
-    let extractedText: string;
-    try {
-      extractedText = await extractTextFromFile(filePath, mimetype, originalname);
-      console.log('[AI Import] extracted text length:', extractedText.length, 'chars');
-    } catch (extractErr: unknown) {
-      await fs.unlink(filePath).catch(() => {});
-      const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);
-      console.error('[AI Import] extract error:', msg);
-      return res.status(422).json({
-        success: false,
-        message:
-          'Không đọc được file (PDF/DOCX lỗi hoặc không hợp lệ). Thử file khác hoặc xuất lại PDF/DOCX.',
-      });
-    }
+    const questions = await processSingleFile(filePath, mimetype, originalname, GEMINI_KEY);
 
-    // 2. Gemini Vision for images
-    const isImage = /\.(jpg|jpeg|png|webp)$/i.test(originalname) ||
-      ['image/jpeg', 'image/png', 'image/webp'].includes(mimetype);
-
-    let questions: GeminiQuestion[] = [];
-
-    if (isImage) {
-      const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-      const model = getGeminiModel(genAI);
-
-      const imageData = await fs.readFile(filePath);
-      const base64 = imageData.toString('base64');
-      const mimeMap: Record<string, string> = {
-        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-        '.png': 'image/png', '.webp': 'image/webp',
-      };
-      const mimeStr = mimeMap[path.extname(originalname).toLowerCase()] || mimetype;
-
-      const prompt = `You are a teacher-exam question extractor. Given this image of exam questions, extract ALL multiple-choice questions and return ONLY a valid JSON array.
-
-Each question: { "question": "text", "type": "multiple-choice", "options": ["A text","B text","C text","D text"], "correctAnswer": "0|1|2|3", "points": 1, "explanation": "" }.
-Map A→0, B→1, C→2, D→3. Return ONLY JSON, no explanation.`;
-
-      console.log('[AI Import] calling Gemini Vision...');
-      const result = await geminiWithRetry(
-        () => model.generateContent([
-          { text: prompt },
-          { inlineData: { mimeType: mimeStr, data: base64 } },
-        ]),
-        'Gemini Vision'
-      );
-
-      const rawText = readGeminiText(result).trim();
-      console.log('[AI Import] Gemini Vision raw response length:', rawText.length);
-      const jsonMatch = rawText.match(/\[[\s\S]*\]/);
-      const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
-
-      try {
-        const parsed = JSON.parse(jsonStr);
-        if (Array.isArray(parsed)) {
-          questions = parsed.map((q: any) => ({
-            question: q.question || '',
-            type: 'multiple-choice' as const,
-            options: Array.isArray(q.options) ? q.options : ['', '', '', ''],
-            correctAnswer: typeof q.correctAnswer === 'number'
-              ? String(q.correctAnswer)
-              : (q.correctAnswer || ''),
-            points: typeof q.points === 'number' ? q.points : 1,
-            explanation: q.explanation || '',
-          }));
-        }
-      } catch {
-        // Return what we can from raw text
-        questions = [];
-      }
-    } else {
-      // 3. Gemini Flash for text/PDF/DOCX
-      const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-      const model = getGeminiModel(genAI);
-
-      const prompt = buildGeminiPrompt(extractedText);
-      console.log('[AI Import] calling Gemini Flash...');
-      const result = await geminiWithRetry(
-        () => model.generateContent(prompt),
-        'Gemini Flash'
-      );
-      const rawText = readGeminiText(result).trim();
-      console.log('[AI Import] Gemini Flash raw response length:', rawText.length);
-
-      // Try to extract JSON from response
-      const jsonMatch = rawText.match(/\[[\s\S]*?\]/);
-      const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
-
-      try {
-        const parsed = JSON.parse(jsonStr);
-        if (Array.isArray(parsed)) {
-          questions = parsed.map((q: any) => ({
-            question: q.question || '',
-            type: 'multiple-choice' as const,
-            options: Array.isArray(q.options) ? q.options : ['', '', '', ''],
-            correctAnswer: typeof q.correctAnswer === 'number'
-              ? String(q.correctAnswer)
-              : (q.correctAnswer || ''),
-            points: typeof q.points === 'number' ? q.points : 1,
-            explanation: q.explanation || '',
-          }));
-        }
-      } catch {
-        return res.status(422).json({
-          success: false,
-          message: 'AI could not parse questions from this file. Please check the document format or add questions manually.',
-          extractedText: extractedText.slice(0, 500),
-        });
-      }
-    }
-
-    // Clean up
     await fs.unlink(filePath).catch(() => {});
 
     if (questions.length === 0) {
@@ -306,11 +196,7 @@ Map A→0, B→1, C→2, D→3. Return ONLY JSON, no explanation.`;
       });
     }
 
-    res.json({
-      success: true,
-      questions,
-      count: questions.length,
-    });
+    res.json({ success: true, questions, count: questions.length });
   } catch (error: any) {
     if (req.file?.path) {
       await fs.unlink(req.file.path).catch(() => {});
@@ -328,6 +214,177 @@ Map A→0, B→1, C→2, D→3. Return ONLY JSON, no explanation.`;
     res.status(status).json({ success: false, message: clientMsg });
   }
 });
+
+/** Xử lý nhiều ảnh cùng lúc — mỗi ảnh gọi Gemini Vision, gộp kết quả */
+router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, res) => {
+  try {
+    if (!req.user || req.user.role !== 'teacher') {
+      return res.status(403).json({ success: false, message: 'Only teachers can use AI import' });
+    }
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) {
+      return res.status(400).json({ success: false, message: 'No files uploaded' });
+    }
+
+    const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    if (!GEMINI_KEY) {
+      await Promise.all(files.map((f) => fs.unlink(f.path).catch(() => {})));
+      return res.status(500).json({ success: false, message: 'GEMINI_API_KEY is not configured on the server' });
+    }
+
+    console.log(`[AI Import Batch] processing ${files.length} files`);
+    const allQuestions: GeminiQuestion[] = [];
+    const errors: { file: string; message: string }[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        const qs = await processSingleFile(file.path, file.mimetype, file.originalname, GEMINI_KEY);
+        allQuestions.push(...qs);
+        console.log(`[AI Import Batch] file ${i + 1}/${files.length} (${file.originalname}): extracted ${qs.length} questions`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push({ file: file.originalname, message: msg });
+        console.error(`[AI Import Batch] file ${file.originalname} failed:`, msg);
+      } finally {
+        await fs.unlink(file.path).catch(() => {});
+      }
+    }
+
+    if (allQuestions.length === 0) {
+      const errorMsg = errors.length > 0
+        ? `Không trích xuất được câu hỏi từ ${errors.length} file. Lỗi: ${errors.map(e => `${e.file}: ${e.message}`).join('; ')}`
+        : 'No questions could be extracted.';
+      return res.status(422).json({ success: false, message: errorMsg });
+    }
+
+    res.json({
+      success: true,
+      questions: allQuestions,
+      count: allQuestions.length,
+      filesProcessed: files.length,
+      filesWithErrors: errors.length,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (error: any) {
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (files) await Promise.all(files.map((f) => fs.unlink(f.path).catch(() => {})));
+    const msg = error?.message || String(error);
+    console.error('[AI Import Batch] error:', msg);
+    const is503 = /503|Service Unavailable|high demand/i.test(msg);
+    const isGeminiFetch = /GoogleGenerativeAI|API key|401|403|404/i.test(msg);
+    const status = is503 || isGeminiFetch ? 502 : 500;
+    const clientMsg = is503
+      ? 'Gemini API đang quá tải (503). Vui lòng chờ 1–2 phút rồi thử lại.'
+      : isGeminiFetch
+      ? 'Dịch vụ AI tạm thời lỗi. Kiểm tra GEMINI_API_KEY trên Render.'
+      : msg || 'Batch import failed';
+    res.status(status).json({ success: false, message: clientMsg });
+  }
+});
+
+/** Tách logic xử lý 1 file thành hàm riêng — dùng chung cho /import và /import-batch */
+async function processSingleFile(
+  filePath: string,
+  mimetype: string,
+  originalname: string,
+  GEMINI_KEY: string
+): Promise<GeminiQuestion[]> {
+  const isImage = /\.(jpg|jpeg|png|webp)$/i.test(originalname) ||
+    ['image/jpeg', 'image/png', 'image/webp'].includes(mimetype);
+
+  if (isImage) {
+    const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+    const model = getGeminiModel(genAI);
+
+    const imageData = await fs.readFile(filePath);
+    const base64 = imageData.toString('base64');
+    const mimeMap: Record<string, string> = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+      '.png': 'image/png', '.webp': 'image/webp',
+    };
+    const mimeStr = mimeMap[path.extname(originalname).toLowerCase()] || mimetype;
+
+    const prompt = `You are a teacher-exam question extractor. Given this image of exam questions, extract ALL multiple-choice questions and return ONLY a valid JSON array.
+
+Each question: { "question": "text", "type": "multiple-choice", "options": ["A text","B text","C text","D text"], "correctAnswer": "0|1|2|3", "points": 1, "explanation": "" }.
+Map A→0, B→1, C→2, D→3. Return ONLY JSON, no explanation.`;
+
+    console.log('[AI Import] calling Gemini Vision for:', originalname);
+    const result = await geminiWithRetry(
+      () => model.generateContent([
+        { text: prompt },
+        { inlineData: { mimeType: mimeStr, data: base64 } },
+      ]),
+      'Gemini Vision'
+    );
+
+    const rawText = readGeminiText(result).trim();
+    const jsonMatch = rawText.match(/\[[\s\S]*\]/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
+
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (Array.isArray(parsed)) {
+        return parsed.map((q: any) => ({
+          question: q.question || '',
+          type: 'multiple-choice' as const,
+          options: Array.isArray(q.options) ? q.options : ['', '', '', ''],
+          correctAnswer: typeof q.correctAnswer === 'number'
+            ? String(q.correctAnswer)
+            : (q.correctAnswer || ''),
+          points: typeof q.points === 'number' ? q.points : 1,
+          explanation: q.explanation || '',
+        }));
+      }
+    } catch {
+      return [];
+    }
+    return [];
+  }
+
+  // Text / PDF / DOCX
+  let extractedText: string;
+  try {
+    extractedText = await extractTextFromFile(filePath, mimetype, originalname);
+  } catch (extractErr: unknown) {
+    const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);
+    throw new Error(`Không đọc được file: ${msg}`);
+  }
+
+  const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+  const model = getGeminiModel(genAI);
+
+  const prompt = buildGeminiPrompt(extractedText);
+  console.log('[AI Import] calling Gemini Flash for:', originalname);
+  const result = await geminiWithRetry(
+    () => model.generateContent(prompt),
+    'Gemini Flash'
+  );
+
+  const rawText = readGeminiText(result).trim();
+  const jsonMatch = rawText.match(/\[[\s\S]*?\]/);
+  const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+    if (Array.isArray(parsed)) {
+      return parsed.map((q: any) => ({
+        question: q.question || '',
+        type: 'multiple-choice' as const,
+        options: Array.isArray(q.options) ? q.options : ['', '', '', ''],
+        correctAnswer: typeof q.correctAnswer === 'number'
+          ? String(q.correctAnswer)
+          : (q.correctAnswer || ''),
+        points: typeof q.points === 'number' ? q.points : 1,
+        explanation: q.explanation || '',
+      }));
+    }
+  } catch {
+    throw new Error('AI không phân tích được câu hỏi từ file này. Hãy thử file khác hoặc nhập câu hỏi thủ công.');
+  }
+  return [];
+}
 
 /** Multer / lọc file: trả JSON 4xx thay vì để middleware toàn cục trả 500 không đồng nhất */
 router.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
