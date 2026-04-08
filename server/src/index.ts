@@ -62,6 +62,7 @@ const corsOptions: cors.CorsOptions = {
   allowedHeaders: [
     'Content-Type',
     'Authorization',
+    'X-Access-Token',
     'Cookie',
     'Origin',
     'Accept',

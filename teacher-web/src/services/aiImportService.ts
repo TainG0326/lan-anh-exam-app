@@ -18,14 +18,31 @@ export interface AIImportResponse {
   errors?: { file: string; message: string }[];
 }
 
-function aiImportUrl(): string {
+function aiImportUrl(token: string | null): string {
   const base = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
-  return `${base}/ai/import`;
+  let url = `${base}/ai/import`;
+  if (token) {
+    url += `${url.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(token)}`;
+  }
+  return url;
 }
 
-function aiImportBatchUrl(): string {
+function aiImportBatchUrl(token: string | null): string {
   const base = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
-  return `${base}/ai/import-batch`;
+  let url = `${base}/ai/import-batch`;
+  if (token) {
+    url += `${url.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(token)}`;
+  }
+  return url;
+}
+
+/** Header auth + query access_token — một số môi trường tước Authorization trên multipart. */
+function authHeadersForUpload(token: string | null): HeadersInit {
+  if (!token) return {};
+  return {
+    Authorization: `Bearer ${token}`,
+    'X-Access-Token': token,
+  };
 }
 
 /** Gợi ý làm nóng server: bỏ hậu tố /api rồi nối /health */
@@ -46,10 +63,7 @@ export const aiImportService = {
     formData.append('file', file);
 
     const token = localStorage.getItem('token');
-    const headers: HeadersInit = {};
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
+    const headers: HeadersInit = authHeadersForUpload(token);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), AI_IMPORT_TIMEOUT_MS);
@@ -57,7 +71,7 @@ export const aiImportService = {
     let response: Response;
     try {
       // fetch + FormData: không set Content-Type để trình duyệt tự gắn boundary (multipart).
-      response = await fetch(aiImportUrl(), {
+      response = await fetch(aiImportUrl(token), {
         method: 'POST',
         body: formData,
         headers,
@@ -109,10 +123,7 @@ export const aiImportService = {
     });
 
     const token = localStorage.getItem('token');
-    const headers: HeadersInit = {};
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
+    const headers: HeadersInit = authHeadersForUpload(token);
 
     const controller = new AbortController();
     const batchTimeout = AI_IMPORT_TIMEOUT_MS * Math.ceil(files.length / 5);
@@ -120,7 +131,7 @@ export const aiImportService = {
 
     let response: Response;
     try {
-      response = await fetch(aiImportBatchUrl(), {
+      response = await fetch(aiImportBatchUrl(token), {
         method: 'POST',
         body: formData,
         headers,

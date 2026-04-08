@@ -17,12 +17,23 @@ export const protect = async (
   try {
     let token: string | undefined;
 
-    // Priority 1: Check HttpOnly Cookie (preferred for security)
-    if ((req as any).cookies && (req as any).cookies.accessToken) {
+    // Query / custom header: dự phòng cho multipart upload khi proxy CDN tước Authorization
+    const q = req.query as { access_token?: string };
+    if (q?.access_token && typeof q.access_token === 'string' && q.access_token.length > 0) {
+      token = q.access_token;
+    }
+    const xAccess = req.headers['x-access-token'];
+    if (!token && xAccess) {
+      token = Array.isArray(xAccess) ? xAccess[0] : xAccess;
+    }
+
+    // Priority 1: HttpOnly Cookie (preferred for security)
+    if (!token && (req as any).cookies && (req as any).cookies.accessToken) {
       token = (req as any).cookies.accessToken;
     }
-    // Priority 2: Check Authorization header (for backward compatibility)
-    else if (
+    // Priority 2: Authorization Bearer
+    if (
+      !token &&
       req.headers.authorization &&
       req.headers.authorization.startsWith('Bearer')
     ) {

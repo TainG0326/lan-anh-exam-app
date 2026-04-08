@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createAssignment } from '../services/assignmentService';
 import { getClasses, Class } from '../services/classService';
-import { aiImportService } from '../services/aiImportService';
-import { Plus, Trash2, Upload, FileText, ArrowLeft, Loader2 } from 'lucide-react';
+import { aiImportService, AIQuestion } from '../services/aiImportService';
+import AIMagicImportModal from '../components/AIMagicImportModal';
+import { Plus, Trash2, FileText, ArrowLeft, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useEffect } from 'react';
 
@@ -20,7 +21,7 @@ export default function CreateAssignment() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingClasses, setLoadingClasses] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [showAiModal, setShowAiModal] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -85,40 +86,16 @@ export default function CreateAssignment() {
     setQuestions(questions.filter((_, i) => i !== index));
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const allowedExts = ['.pdf', '.docx', '.doc', '.txt', '.jpg', '.jpeg', '.png', '.webp'];
-    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
-    if (!allowedExts.includes(ext)) {
-      toast.error('Chấp nhận: PDF, DOCX, TXT, JPG, PNG, WEBP');
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const result = await aiImportService.importFile(file);
-      if (result.questions?.length) {
-        const mapped: Question[] = result.questions.map((q) => ({
-          question: q.question,
-          type: 'multiple-choice' as const,
-          options: q.options?.length ? q.options : ['', '', '', ''],
-          correctAnswer: q.correctAnswer,
-          points: q.points ?? 10,
-        }));
-        setQuestions((prev) => [...prev, ...mapped]);
-        toast.success(`Đã tạo ${result.count} câu bằng AI`);
-      } else {
-        toast.error('AI không trích xuất được câu hỏi từ file này');
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Import AI thất bại';
-      toast.error(msg);
-    } finally {
-      setUploading(false);
-      e.target.value = '';
-    }
+  const handleAiImport = (aiQuestions: AIQuestion[]) => {
+    const mapped: Question[] = aiQuestions.map((q) => ({
+      question: q.question,
+      type: 'multiple-choice' as const,
+      options: q.options?.length ? q.options : ['', '', '', ''],
+      correctAnswer: q.correctAnswer,
+      points: q.points ?? 10,
+    }));
+    setQuestions((prev) => [...prev, ...mapped]);
+    toast.success(`Đã thêm ${aiQuestions.length} câu bằng AI`);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -261,30 +238,14 @@ export default function CreateAssignment() {
               <span className="text-xs px-2 py-1 rounded-lg bg-green-50 text-green-700 border border-green-200 font-medium">
                 Tổng: {totalPoints} điểm
               </span>
-              <label
-                className={`inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 border border-gray-300 rounded-md shadow-sm text-xs sm:text-sm font-medium bg-white hover:bg-gray-50 cursor-pointer ${
-                  uploading ? 'opacity-60 pointer-events-none' : ''
-                }`}
+              <button
+                type="button"
+                onClick={() => setShowAiModal(true)}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#a78bfa] via-[#f472b6] to-[#fbbf24] px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02]"
               >
-                {uploading ? (
-                  <span className="flex items-center gap-2 text-green-700">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Đang xử lý AI...
-                  </span>
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4" />
-                    AI Import (PDF/DOCX/TXT/IMG)
-                  </>
-                )}
-                <input
-                  type="file"
-                  accept=".pdf,.docx,.doc,.txt,.jpg,.jpeg,.png,.webp"
-                  onChange={handleFileUpload}
-                  disabled={uploading}
-                  className="hidden"
-                />
-              </label>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>
+                AI Smart Import
+              </button>
             </div>
           </div>
 
@@ -293,7 +254,7 @@ export default function CreateAssignment() {
             <div className="mb-4 p-4 border-2 border-dashed border-gray-300 rounded-lg text-center">
               <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
               <p className="text-sm text-gray-600 mb-2">
-                Chưa có câu hỏi. Thêm thủ công hoặc dùng AI import từ file.
+                Chưa có câu hỏi. Thêm thủ công hoặc dùng AI Smart Import.
               </p>
             </div>
           )}
@@ -453,6 +414,14 @@ export default function CreateAssignment() {
           </button>
         </div>
       </form>
+
+      {/* AI Magic Import Modal */}
+      <AIMagicImportModal
+        isOpen={showAiModal}
+        onClose={() => setShowAiModal(false)}
+        onImport={handleAiImport}
+        importTargetNoun="assignment"
+      />
     </div>
   );
 }
