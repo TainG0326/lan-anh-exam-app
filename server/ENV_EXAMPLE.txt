@@ -28,5 +28,9 @@ REQUIRE_2FA=true
 # Get from: https://resend.com/api-keys
 RESEND_API_KEY=your-resend-api-key
 
+# Google Gemini (AI import câu hỏi) — https://aistudio.google.com/app/apikey
+GEMINI_API_KEY=your-gemini-api-key
+# Tùy chọn: model mặc định gemini-2.5-flash (gemini-1.5-flash thường 404 trên API mới)
+# GEMINI_MODEL=gemini-2.5-flash
 
 

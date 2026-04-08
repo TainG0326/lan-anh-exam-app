@@ -38,6 +38,9 @@ const upload = multer({
 });
 export const aiUploadMiddleware = upload.single('file');
 
+/** Google đã ngừng nhiều bản gemini-1.5-flash trên v1beta → dùng model ổn định mới. Có thể override bằng GEMINI_MODEL trên Render. */
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
 interface GeminiQuestion {
   question: string;
   type: 'multiple-choice';
@@ -117,7 +120,7 @@ router.post('/import', multer({ dest: uploadDir, limits: { fileSize: 20 * 1024 *
 
     if (isImage) {
       const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
 
       const imageData = await fs.readFile(filePath);
       const base64 = imageData.toString('base64');
@@ -162,7 +165,7 @@ Map A→0, B→1, C→2, D→3. Return ONLY JSON, no explanation.`;
     } else {
       // 3. Gemini Flash for text/PDF/DOCX
       const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
 
       const prompt = buildGeminiPrompt(extractedText);
       const result = await model.generateContent(prompt);
