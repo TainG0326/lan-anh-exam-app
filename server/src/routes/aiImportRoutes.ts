@@ -7,7 +7,12 @@ import { fileURLToPath } from 'url';
 import pdfParseLib from 'pdf-parse';
 const pdfParse = 'default' in pdfParseLib ? (pdfParseLib as any).default : pdfParseLib;
 import mammoth from 'mammoth';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import {
+  GoogleGenerativeAI,
+  HarmBlockThreshold,
+  HarmCategory,
+  type GenerateContentResult,
+} from '@google/generative-ai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,6 +45,73 @@ export const aiUploadMiddleware = upload.single('file');
 
 /** Google đã ngừng nhiều bản gemini-1.5-flash trên v1beta → dùng model ổn định mới. Có thể override bằng GEMINI_MODEL trên Render. */
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
+/** Retry tự động khi Gemini trả 503 (high demand). */
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 2000;
+
+async function geminiWithRetry<T>(fn: () => Promise<T>, label = 'Gemini call'): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const is503 = /503|Service Unavailable|high demand|temporarily unavailable/i.test(msg);
+      if (is503 && attempt < MAX_RETRIES) {
+        const delay = RETRY_DELAY_MS * (attempt + 1);
+        console.warn(`[AI Import] ${label} bị 503 (lần ${attempt + 1}), thử lại sau ${delay}ms...`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
+
+/** Giảm chặn nhầm với đề thi / tài liệu học thuật (an toàn vẫn do API Google áp dụng). */
+const GEMINI_SAFETY_SETTINGS = [
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+];
+
+function getGeminiModel(genAI: GoogleGenerativeAI) {
+  return genAI.getGenerativeModel({
+    model: GEMINI_MODEL,
+    safetySettings: GEMINI_SAFETY_SETTINGS,
+  });
+}
+
+/** Tránh throw từ response.text() khi bị chặn / không có candidate — trả lỗi rõ cho client. */
+function readGeminiText(result: GenerateContentResult): string {
+  const response = result.response as {
+    text?: () => string;
+    candidates?: unknown[];
+    promptFeedback?: { blockReason?: string };
+  };
+  try {
+    if (typeof response.text === 'function') {
+      return response.text();
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      msg.includes('block') || msg.includes('Block')
+        ? 'AI từ chối xử lý nội dung (chính sách an toàn). Thử file khác hoặc nhập câu hỏi thủ công.'
+        : msg
+    );
+  }
+  if (response.promptFeedback?.blockReason) {
+    throw new Error(
+      'AI không xử lý được nội dung (bị chặn). Thử đổi file hoặc trích đoạn văn bản ngắn hơn.'
+    );
+  }
+  return '';
+}
 
 interface GeminiQuestion {
   question: string;
@@ -94,6 +166,7 @@ router.use(protect);
 // Một multer duy nhất (aiUploadMiddleware) — trước đó có thêm multer inline → lỗi; không gắn multer → req.file luôn undefined
 router.post('/import', aiUploadMiddleware, async (req: AuthRequest, res) => {
   try {
+    console.log('[AI Import] user:', req.user?.id, req.user?.role);
     if (!req.user || req.user.role !== 'teacher') {
       return res.status(403).json({ success: false, message: 'Only teachers can use AI import' });
     }
@@ -104,6 +177,7 @@ router.post('/import', aiUploadMiddleware, async (req: AuthRequest, res) => {
     const filePath = req.file.path;
     const { mimetype, originalname } = req.file;
     const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    console.log('[AI Import] file:', originalname, 'mime:', mimetype, 'GEMINI_KEY set:', !!GEMINI_KEY);
 
     if (!GEMINI_KEY) {
       await fs.unlink(filePath).catch(() => {});
@@ -111,7 +185,20 @@ router.post('/import', aiUploadMiddleware, async (req: AuthRequest, res) => {
     }
 
     // 1. Extract text
-    let extractedText = await extractTextFromFile(filePath, mimetype, originalname);
+    let extractedText: string;
+    try {
+      extractedText = await extractTextFromFile(filePath, mimetype, originalname);
+      console.log('[AI Import] extracted text length:', extractedText.length, 'chars');
+    } catch (extractErr: unknown) {
+      await fs.unlink(filePath).catch(() => {});
+      const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);
+      console.error('[AI Import] extract error:', msg);
+      return res.status(422).json({
+        success: false,
+        message:
+          'Không đọc được file (PDF/DOCX lỗi hoặc không hợp lệ). Thử file khác hoặc xuất lại PDF/DOCX.',
+      });
+    }
 
     // 2. Gemini Vision for images
     const isImage = /\.(jpg|jpeg|png|webp)$/i.test(originalname) ||
@@ -121,7 +208,7 @@ router.post('/import', aiUploadMiddleware, async (req: AuthRequest, res) => {
 
     if (isImage) {
       const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-      const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+      const model = getGeminiModel(genAI);
 
       const imageData = await fs.readFile(filePath);
       const base64 = imageData.toString('base64');
@@ -136,12 +223,17 @@ router.post('/import', aiUploadMiddleware, async (req: AuthRequest, res) => {
 Each question: { "question": "text", "type": "multiple-choice", "options": ["A text","B text","C text","D text"], "correctAnswer": "0|1|2|3", "points": 1, "explanation": "" }.
 Map A→0, B→1, C→2, D→3. Return ONLY JSON, no explanation.`;
 
-      const result = await model.generateContent([
-        { text: prompt },
-        { inlineData: { mimeType: mimeStr, data: base64 } },
-      ]);
+      console.log('[AI Import] calling Gemini Vision...');
+      const result = await geminiWithRetry(
+        () => model.generateContent([
+          { text: prompt },
+          { inlineData: { mimeType: mimeStr, data: base64 } },
+        ]),
+        'Gemini Vision'
+      );
 
-      const rawText = result.response.text().trim();
+      const rawText = readGeminiText(result).trim();
+      console.log('[AI Import] Gemini Vision raw response length:', rawText.length);
       const jsonMatch = rawText.match(/\[[\s\S]*\]/);
       const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
 
@@ -166,11 +258,16 @@ Map A→0, B→1, C→2, D→3. Return ONLY JSON, no explanation.`;
     } else {
       // 3. Gemini Flash for text/PDF/DOCX
       const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-      const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+      const model = getGeminiModel(genAI);
 
       const prompt = buildGeminiPrompt(extractedText);
-      const result = await model.generateContent(prompt);
-      const rawText = result.response.text().trim();
+      console.log('[AI Import] calling Gemini Flash...');
+      const result = await geminiWithRetry(
+        () => model.generateContent(prompt),
+        'Gemini Flash'
+      );
+      const rawText = readGeminiText(result).trim();
+      console.log('[AI Import] Gemini Flash raw response length:', rawText.length);
 
       // Try to extract JSON from response
       const jsonMatch = rawText.match(/\[[\s\S]*?\]/);
@@ -215,10 +312,36 @@ Map A→0, B→1, C→2, D→3. Return ONLY JSON, no explanation.`;
       count: questions.length,
     });
   } catch (error: any) {
-    try { await fs.unlink(req.file?.path || '').catch(() => {}); } catch {}
-    console.error('AI Import error:', error.message);
-    res.status(500).json({ success: false, message: error.message || 'AI import failed' });
+    if (req.file?.path) {
+      await fs.unlink(req.file.path).catch(() => {});
+    }
+    const msg = error?.message || String(error);
+    console.error('[AI Import] error:', msg);
+    const is503 = /503|Service Unavailable|high demand|temporarily unavailable/i.test(msg);
+    const isGeminiFetch = /GoogleGenerativeAI|fetching from|API key|API_KEY|401|403|404/i.test(msg);
+    const status = is503 || isGeminiFetch ? 502 : 500;
+    const clientMsg = is503
+      ? 'Gemini API đang quá tải (503). Vui lòng chờ 1–2 phút rồi thử lại.'
+      : isGeminiFetch
+      ? 'Dịch vụ AI tạm thời lỗi hoặc cấu hình API (Gemini) chưa đúng trên server. Kiểm tra GEMINI_API_KEY và GEMINI_MODEL trên Render.'
+      : msg || 'AI import failed';
+    res.status(status).json({ success: false, message: clientMsg });
   }
+});
+
+/** Multer / lọc file: trả JSON 4xx thay vì để middleware toàn cục trả 500 không đồng nhất */
+router.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const anyErr = err as { name?: string; code?: string; message?: string };
+  if (anyErr?.name === 'MulterError' || anyErr?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({
+      success: false,
+      message: 'File quá lớn (tối đa 20MB).',
+    });
+  }
+  if (typeof anyErr?.message === 'string' && anyErr.message.includes('Only PDF')) {
+    return res.status(400).json({ success: false, message: anyErr.message });
+  }
+  next(err);
 });
 
 export default router;

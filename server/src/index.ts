@@ -4,7 +4,6 @@ import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { testConnection } from './config/supabase.js';
 
 // Import routes
 import authRoutes from './routes/authRoutes.js';
@@ -27,29 +26,39 @@ const allowedOrigins = [
   'http://localhost:3002',
   'http://localhost:5173',
   'http://localhost:5174',
-  /\.vercel\.app$/,
-  /\.vercel\.app\/(.*)/,
+  'https://teacher-web-rose.vercel.app',
+  'https://student-web-xi.vercel.app',
 ];
 
-const corsOptions = {
-  origin: function (origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) {
-    // Allow requests with no origin (mobile, curl, server-to-server)
-    if (!origin) return callback(null, true);
+function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  // Mọi preview / production *.vercel.app (ví dụ teacher-web-rose.vercel.app, *-git-*.vercel.app)
+  try {
+    const host = new URL(origin).hostname;
+    if (host.endsWith('.vercel.app')) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
 
-    // Check against regex patterns
-    const allowed = allowedOrigins.some((o) =>
-      o instanceof RegExp ? o.test(origin) : origin === o
-    );
-    if (allowed) return callback(null, true);
-
-    // Fallback: allow any vercel.app domain
-    if (origin.includes('.vercel.app')) return callback(null, true);
-
-    callback(null, true);
+const corsOptions: cors.CorsOptions = {
+  origin(origin: string | undefined, callback) {
+    if (isOriginAllowed(origin)) {
+      // credentials: true → phải trả đúng Origin, không dùng *
+      callback(null, origin ?? true);
+    } else {
+      console.warn('[CORS] Blocked origin:', origin);
+      callback(null, false);
+    }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'Origin', 'Accept'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'Origin', 'Accept', 'X-Requested-With'],
+  exposedHeaders: ['Authorization'],
+  optionsSuccessStatus: 204,
+  maxAge: 86400,
 };
 
 app.use(cors(corsOptions));
@@ -114,7 +123,8 @@ app.use((req: Request, res: Response) => {
 const startServer = async () => {
   try {
     console.log('🚀 Starting server...');
-    app.listen(PORT, () => {
+    // Render / container: bắt buộc lắng nghe mọi interface (tránh chỉ bind localhost → proxy không kết nối được → Cloudflare 521)
+    app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`✅ Server running on port ${PORT}`);
       console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
     });
