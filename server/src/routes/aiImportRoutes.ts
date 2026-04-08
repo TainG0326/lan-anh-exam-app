@@ -739,7 +739,16 @@ async function processSingleFile(
         return await processImageWithClaude(imageData, originalname, mimeStr);
       } catch (claudeErr: unknown) {
         const claudeMsg = claudeErr instanceof Error ? claudeErr.message : String(claudeErr);
-        console.warn(`[AI Import] Claude Vision thất bại cho ${originalname}: ${claudeMsg}`);
+        const isCreditExhausted =
+          claudeMsg.includes('400') ||
+          /credit balance|too low|plans & billing|upgrade.*purchase/i.test(claudeMsg) ||
+          claudeMsg.includes('invalid_request_error');
+
+        console.warn(
+          isCreditExhausted
+            ? `[AI Import] Claude hết credit cho ${originalname}: ${claudeMsg}`
+            : `[AI Import] Claude Vision thất bại cho ${originalname}: ${claudeMsg}`
+        );
 
         // Fallback sang Gemini nếu có key
         if (geminiKey) {
@@ -783,7 +792,16 @@ async function processSingleFile(
       return await processTextWithClaude(extractedText, originalname);
     } catch (claudeErr: unknown) {
       const claudeMsg = claudeErr instanceof Error ? claudeErr.message : String(claudeErr);
-      console.warn(`[AI Import] Claude text processing thất bại cho ${originalname}: ${claudeMsg}`);
+      const isCreditExhausted =
+        claudeMsg.includes('400') ||
+        /credit balance|too low|plans & billing|upgrade.*purchase/i.test(claudeMsg) ||
+        claudeMsg.includes('invalid_request_error');
+
+      console.warn(
+        isCreditExhausted
+          ? `[AI Import] Claude hết credit cho ${originalname}: ${claudeMsg}`
+          : `[AI Import] Claude text processing thất bại cho ${originalname}: ${claudeMsg}`
+      );
 
       if (geminiKey) {
         console.log(`[AI Import] Fallback sang Gemini cho ${originalname}`);
