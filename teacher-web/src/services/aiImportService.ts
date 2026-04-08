@@ -54,7 +54,7 @@ function apiHealthUrl(): string | null {
   return origin ? `${origin}/health` : null;
 }
 
-/** Render cold start + Gemini (ảnh/PDF) có thể > 30s; không có timeout thì UI xoay vô hạn */
+/** Render cold start + AI (ảnh/PDF) có thể > 30s; không có timeout thì UI xoay vô hạn */
 const AI_IMPORT_TIMEOUT_MS = Number(import.meta.env.VITE_AI_IMPORT_TIMEOUT_MS) || 180000;
 
 export const aiImportService = {
@@ -88,7 +88,7 @@ export const aiImportService = {
           : 'Hoặc mở trước endpoint /health của API để làm nóng server, rồi import lại.';
         throw new Error(
           `Hết thời gian chờ (${AI_IMPORT_TIMEOUT_MS / 1000}s). ` +
-            'Server (ví dụ Render) có thể đang cold start hoặc Gemini xử lý lâu — hãy thử lại sau 1–2 phút. ' +
+            'Server (ví dụ Render) có thể đang cold start hoặc AI xử lý lâu — hãy thử lại sau 1–2 phút. ' +
             warmHint
         );
       }
@@ -108,7 +108,7 @@ export const aiImportService = {
     return data;
   },
 
-  /** Gửi nhiều ảnh cùng lúc, mỗi ảnh xử lý bằng Gemini Vision, gộp kết quả */
+  /** Gửi nhiều ảnh cùng lúc, mỗi ảnh xử lý trên server (Claude Vision, fallback Gemini), gộp kết quả */
   importFiles: async (files: File[]): Promise<AIImportResponse> => {
     if (files.length === 0) {
       throw new Error('No files selected');

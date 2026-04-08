@@ -48,9 +48,20 @@ export const aiUploadArrayMiddleware = upload.array('images', 50);
 /** Google đã ngừng nhiều bản gemini-1.5-flash trên v1beta → dùng model ổn định mới. Có thể override bằng GEMINI_MODEL trên Render. */
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
-/** Claude Vision configuration - fallback khi Gemini không hoạt động */
+/** Claude Vision — ưu tiên khi có ANTHROPIC_API_KEY; Gemini làm fallback */
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-3-5-haiku-20241022';
+
+function getGeminiKeyFromEnv(): string | undefined {
+  return process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+}
+
+function hasConfiguredAiProvider(): boolean {
+  return Boolean(ANTHROPIC_API_KEY || getGeminiKeyFromEnv());
+}
+
+const AI_KEYS_MISSING_MSG =
+  'Chưa cấu hình AI trên server. Thêm biến ANTHROPIC_API_KEY (khuyến nghị) hoặc GEMINI_API_KEY trên hosting (ví dụ Render).';
 
 /** Retry tự động khi Claude trả 529 (model overloaded) hoặc 429 (rate limit). */
 const MAX_RETRIES_CLAUDE = 3;
@@ -548,15 +559,24 @@ router.post('/import', aiUploadMiddleware, async (req: AuthRequest, res) => {
 
     const filePath = req.file.path;
     const { mimetype, originalname } = req.file;
-    const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-    console.log('[AI Import] file:', originalname, 'mime:', mimetype, 'GEMINI_KEY set:', !!GEMINI_KEY);
+    const geminiKey = getGeminiKeyFromEnv() ?? '';
+    console.log(
+      '[AI Import] file:',
+      originalname,
+      'mime:',
+      mimetype,
+      'ANTHROPIC:',
+      !!ANTHROPIC_API_KEY,
+      'GEMINI:',
+      !!geminiKey
+    );
 
-    if (!GEMINI_KEY) {
+    if (!hasConfiguredAiProvider()) {
       await fs.unlink(filePath).catch(() => {});
-      return res.status(500).json({ success: false, message: 'GEMINI_API_KEY is not configured on the server' });
+      return res.status(500).json({ success: false, message: AI_KEYS_MISSING_MSG });
     }
 
-    const questions = await processSingleFile(filePath, mimetype, originalname, GEMINI_KEY);
+    const questions = await processSingleFile(filePath, mimetype, originalname, geminiKey);
 
     await fs.unlink(filePath).catch(() => {});
 
@@ -597,7 +617,7 @@ router.post('/import', aiUploadMiddleware, async (req: AuthRequest, res) => {
   }
 });
 
-/** Xử lý nhiều ảnh cùng lúc — mỗi ảnh gọi Gemini Vision, gộp kết quả */
+/** Xử lý nhiều ảnh — mỗi ảnh qua Claude Vision (ưu tiên) hoặc Gemini, gộp kết quả */
 router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, res) => {
   try {
     if (!req.user || req.user.role !== 'teacher') {
@@ -608,20 +628,22 @@ router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, r
       return res.status(400).json({ success: false, message: 'No files uploaded' });
     }
 
-    const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-    if (!GEMINI_KEY) {
+    const geminiKey = getGeminiKeyFromEnv() ?? '';
+    if (!hasConfiguredAiProvider()) {
       await Promise.all(files.map((f) => fs.unlink(f.path).catch(() => {})));
-      return res.status(500).json({ success: false, message: 'GEMINI_API_KEY is not configured on the server' });
+      return res.status(500).json({ success: false, message: AI_KEYS_MISSING_MSG });
     }
 
-    console.log(`[AI Import Batch] processing ${files.length} files`);
+    console.log(
+      `[AI Import Batch] processing ${files.length} files (ANTHROPIC: ${!!ANTHROPIC_API_KEY}, GEMINI: ${!!geminiKey})`
+    );
     const allQuestions: GeminiQuestion[] = [];
     const errors: { file: string; message: string }[] = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
-        const qs = await processSingleFile(file.path, file.mimetype, file.originalname, GEMINI_KEY);
+        const qs = await processSingleFile(file.path, file.mimetype, file.originalname, geminiKey);
         allQuestions.push(...qs);
         console.log(`[AI Import Batch] file ${i + 1}/${files.length} (${file.originalname}): extracted ${qs.length} questions`);
       } catch (err: unknown) {
@@ -698,7 +720,7 @@ async function processSingleFile(
   filePath: string,
   mimetype: string,
   originalname: string,
-  GEMINI_KEY: string
+  geminiKey: string
 ): Promise<GeminiQuestion[]> {
   const isImage = /\.(jpg|jpeg|png|webp)$/i.test(originalname) ||
     ['image/jpeg', 'image/png', 'image/webp'].includes(mimetype);
@@ -720,10 +742,10 @@ async function processSingleFile(
         console.warn(`[AI Import] Claude Vision thất bại cho ${originalname}: ${claudeMsg}`);
 
         // Fallback sang Gemini nếu có key
-        if (GEMINI_KEY) {
+        if (geminiKey) {
           console.log(`[AI Import] Fallback sang Gemini Vision cho ${originalname}`);
           try {
-            return await processImageWithGemini(imageData, originalname, mimeStr, GEMINI_KEY);
+            return await processImageWithGemini(imageData, originalname, mimeStr, geminiKey);
           } catch (geminiErr: unknown) {
             const geminiMsg = geminiErr instanceof Error ? geminiErr.message : String(geminiErr);
             console.error(`[AI Import] Gemini Vision cũng thất bại cho ${originalname}: ${geminiMsg}`);
@@ -735,10 +757,10 @@ async function processSingleFile(
     }
 
     // Không có Claude → dùng Gemini trực tiếp
-    if (!GEMINI_KEY) {
+    if (!geminiKey) {
       throw new Error('Không có AI provider nào được cấu hình (ANTHROPIC_API_KEY hoặc GEMINI_API_KEY)');
     }
-    return await processImageWithGemini(imageData, originalname, mimeStr, GEMINI_KEY);
+    return await processImageWithGemini(imageData, originalname, mimeStr, geminiKey);
   }
 
   // Text / PDF / DOCX - ưu tiên Claude, fallback Gemini
@@ -763,10 +785,10 @@ async function processSingleFile(
       const claudeMsg = claudeErr instanceof Error ? claudeErr.message : String(claudeErr);
       console.warn(`[AI Import] Claude text processing thất bại cho ${originalname}: ${claudeMsg}`);
 
-      if (GEMINI_KEY) {
+      if (geminiKey) {
         console.log(`[AI Import] Fallback sang Gemini cho ${originalname}`);
         try {
-          return await processTextWithGemini(extractedText, originalname, GEMINI_KEY);
+          return await processTextWithGemini(extractedText, originalname, geminiKey);
         } catch (geminiErr: unknown) {
           const geminiMsg = geminiErr instanceof Error ? geminiErr.message : String(geminiErr);
           console.error(`[AI Import] Gemini cũng thất bại cho ${originalname}: ${geminiMsg}`);
@@ -778,10 +800,10 @@ async function processSingleFile(
   }
 
   // Không có Claude → dùng Gemini trực tiếp
-  if (!GEMINI_KEY) {
+  if (!geminiKey) {
     throw new Error('Không có AI provider nào được cấu hình (ANTHROPIC_API_KEY hoặc GEMINI_API_KEY)');
   }
-  return await processTextWithGemini(extractedText, originalname, GEMINI_KEY);
+  return await processTextWithGemini(extractedText, originalname, geminiKey);
 }
 
 /** Xử lý ảnh bằng Gemini Vision */

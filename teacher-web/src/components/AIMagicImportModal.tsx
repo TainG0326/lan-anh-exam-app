@@ -486,7 +486,7 @@ export default function AIMagicImportModal({
                   </svg>
                   <span>
                     <strong>Recommended: max 30 images per import</strong> for best performance.
-                    Each image is processed by AI (Gemini) and may take 2–3 seconds.
+                    Each image is processed by Claude Vision (AI) and may take 2–3 seconds.
                   </span>
                 </div>
               )}
@@ -552,12 +552,12 @@ export default function AIMagicImportModal({
               <h3 className="mb-2 text-xl font-bold text-text-primary">AI is analyzing...</h3>
               <p className="max-w-sm text-center text-sm text-text-secondary">{processingLabel}</p>
               <p className="mt-3 max-w-md text-center text-xs text-text-muted leading-relaxed">
-                First time after server sleeps may take <strong>1–3 minutes</strong> (Render cold start + Gemini).
+                First time after server sleeps may take <strong>1–3 minutes</strong> (cold start + AI processing).
                 Please wait, do not close this window.
               </p>
               <div className="mt-6 flex items-center gap-2 text-sm text-text-muted">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Gemini 2.5 Flash · Vision OCR
+                Claude Vision · OCR
               </div>
             </div>
           )}
