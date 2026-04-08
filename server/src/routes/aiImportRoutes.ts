@@ -91,8 +91,8 @@ const router = express.Router();
 // Bắt buộc: không có protect thì req.user luôn undefined → luôn 403 "Only teachers can use AI import"
 router.use(protect);
 
-// Dùng aiUploadMiddleware đã export ở trên — KHÔNG tạo thêm multer instance
-router.post('/import', async (req: AuthRequest, res) => {
+// Một multer duy nhất (aiUploadMiddleware) — trước đó có thêm multer inline → lỗi; không gắn multer → req.file luôn undefined
+router.post('/import', aiUploadMiddleware, async (req: AuthRequest, res) => {
   try {
     if (!req.user || req.user.role !== 'teacher') {
       return res.status(403).json({ success: false, message: 'Only teachers can use AI import' });
