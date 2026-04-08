@@ -117,7 +117,7 @@ router.post('/import', multer({ dest: uploadDir, limits: { fileSize: 20 * 1024 *
 
     if (isImage) {
       const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-      const model = genAI.getGenerativeModel({ model: 'models/gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
       const imageData = await fs.readFile(filePath);
       const base64 = imageData.toString('base64');
@@ -162,7 +162,7 @@ Map A→0, B→1, C→2, D→3. Return ONLY JSON, no explanation.`;
     } else {
       // 3. Gemini Flash for text/PDF/DOCX
       const genAI = new GoogleGenerativeAI(GEMINI_KEY);
-      const model = genAI.getGenerativeModel({ model: 'models/gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
       const prompt = buildGeminiPrompt(extractedText);
       const result = await model.generateContent(prompt);
