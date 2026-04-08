@@ -1,5 +1,5 @@
 import express from 'express';
-import { AuthRequest } from '../middleware/auth.js';
+import { AuthRequest, protect } from '../middleware/auth.js';
 import multer, { FileFilterCallback } from 'multer';
 import fs from 'fs/promises';
 import path from 'path';
@@ -84,6 +84,9 @@ async function extractTextFromFile(
 }
 
 const router = express.Router();
+
+// Bắt buộc: không có protect thì req.user luôn undefined → luôn 403 "Only teachers can use AI import"
+router.use(protect);
 
 router.post('/import', multer({ dest: uploadDir, limits: { fileSize: 20 * 1024 * 1024 } }).single('file'), async (req: AuthRequest, res) => {
   try {
