@@ -24,6 +24,72 @@ const DRAG_ACTIVE_CLASS =
   'border-primary bg-primary/[0.06] ring-4 ring-primary/10 scale-[1.01]';
 const DRAG_IDLE_CLASS = 'border-dashed border-[#648777]/35 bg-[#648777]/[0.04]';
 
+const IMAGE_EXT = /\.(jpg|jpeg|png|webp)$/i;
+const MAX_FILES = 50;
+
+function isImageFile(f: File): boolean {
+  return IMAGE_EXT.test(f.name) || /^image\/(jpeg|png|webp)$/i.test(f.type);
+}
+
+/** Đọc 1 file entry (Chrome khi kéo file/thư mục). */
+function fileEntryToFile(entry: FileSystemFileEntry): Promise<File> {
+  return new Promise((resolve, reject) => {
+    entry.file(resolve, reject);
+  });
+}
+
+/** Đọc đệ quy thư mục từ drag-and-drop (webkit). */
+async function readDirectoryEntry(dir: FileSystemDirectoryEntry): Promise<File[]> {
+  const reader = dir.createReader();
+  const out: File[] = [];
+  // readEntries có thể trả nhiều lần; gọi đến khi mảng rỗng
+  for (;;) {
+    const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => {
+      reader.readEntries(resolve, reject);
+    });
+    if (batch.length === 0) break;
+    for (const ent of batch) {
+      if (ent.isFile) {
+        try {
+          out.push(await fileEntryToFile(ent as FileSystemFileEntry));
+        } catch {
+          /* bỏ qua file lỗi */
+        }
+      } else if (ent.isDirectory) {
+        out.push(...(await readDirectoryEntry(ent as FileSystemDirectoryEntry)));
+      }
+    }
+  }
+  return out;
+}
+
+async function entryToFiles(entry: FileSystemEntry): Promise<File[]> {
+  if (entry.isFile) {
+    try {
+      return [await fileEntryToFile(entry as FileSystemFileEntry)];
+    } catch {
+      return [];
+    }
+  }
+  if (entry.isDirectory) {
+    return readDirectoryEntry(entry as FileSystemDirectoryEntry);
+  }
+  return [];
+}
+
+function mergeUniqueFiles(prev: File[], incoming: File[]): File[] {
+  const key = (f: File) =>
+    `${f.webkitRelativePath || f.name}\0${f.size}\0${f.lastModified}`;
+  const seen = new Set(prev.map(key));
+  const added = incoming.filter((f) => {
+    const k = key(f);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  return [...prev, ...added];
+}
+
 interface FileError {
   fileName: string;
   message: string;
@@ -71,22 +137,50 @@ export default function AIMagicImportModal({
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const files = Array.from(e.dataTransfer.files);
-    const imageFiles = files.filter((f) =>
-      /\.(jpg|jpeg|png|webp)$/i.test(f.name)
-    );
-    if (imageFiles.length > 0) {
-      setSelectedFiles((prev) => [...prev, ...imageFiles]);
+    const dt = e.dataTransfer;
+    const entries: FileSystemEntry[] = [];
+    const looseFiles: File[] = [];
+
+    if (dt.items?.length) {
+      for (let i = 0; i < dt.items.length; i++) {
+        const item = dt.items[i];
+        if (item.kind !== 'file') continue;
+        const wk = item as DataTransferItem & {
+          webkitGetAsEntry?: () => FileSystemEntry | null;
+        };
+        const entry = typeof wk.webkitGetAsEntry === 'function' ? wk.webkitGetAsEntry() : null;
+        if (entry) entries.push(entry);
+        else {
+          const f = item.getAsFile();
+          if (f) looseFiles.push(f);
+        }
+      }
     }
+
+    const applyMerge = (incoming: File[]) => {
+      const imageFiles = incoming.filter(isImageFile);
+      if (imageFiles.length === 0) return;
+      setSelectedFiles((prev) => mergeUniqueFiles(prev, imageFiles).slice(0, MAX_FILES));
+    };
+
+    if (entries.length > 0) {
+      void Promise.all(entries.map(entryToFiles))
+        .then((chunks) => applyMerge([...looseFiles, ...chunks.flat()]))
+        .catch(() => applyMerge([...looseFiles, ...Array.from(dt.files)]));
+      return;
+    }
+    if (looseFiles.length > 0) {
+      applyMerge(looseFiles);
+      return;
+    }
+    applyMerge(Array.from(dt.files));
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const imageFiles = files.filter((f) =>
-      /\.(jpg|jpeg|png|webp)$/i.test(f.name)
-    );
+    const imageFiles = files.filter(isImageFile);
     if (imageFiles.length > 0) {
-      setSelectedFiles((prev) => [...prev, ...imageFiles]);
+      setSelectedFiles((prev) => mergeUniqueFiles(prev, imageFiles).slice(0, MAX_FILES));
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -101,20 +195,16 @@ export default function AIMagicImportModal({
 
   const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const imageFiles = files.filter((f) =>
-      /\.(jpg|jpeg|png|webp)$/i.test(f.name)
-    );
+    const imageFiles = files.filter(isImageFile);
     if (imageFiles.length > 0) {
-      setSelectedFiles((prev) => {
-        const existingNames = new Set(prev.map((f) => f.name + f.size));
-        const newFiles = imageFiles.filter((f) => !existingNames.has(f.name + f.size));
-        return [...prev, ...newFiles];
-      });
+      setSelectedFiles((prev) => mergeUniqueFiles(prev, imageFiles).slice(0, MAX_FILES));
     }
     if (folderInputRef.current) folderInputRef.current.value = '';
   };
 
-  const handleSelectFolder = () => {
+  const handleSelectFolder = (ev: React.MouseEvent) => {
+    ev.preventDefault();
+    ev.stopPropagation();
     folderInputRef.current?.click();
   };
 
@@ -277,11 +367,13 @@ export default function AIMagicImportModal({
                 <input
                   ref={folderInputRef}
                   type="file"
-                  accept={ACCEPTED}
-                  /* @ts-ignore */
-                  webkitdirectory="true"
+                  multiple
                   onChange={handleFolderChange}
                   className="hidden"
+                  {...({
+                    webkitdirectory: '',
+                    directory: '',
+                  } as React.InputHTMLAttributes<HTMLInputElement>)}
                 />
 
                 {hasFiles ? (
@@ -315,6 +407,7 @@ export default function AIMagicImportModal({
                 <button
                   type="button"
                   onClick={handleSelectFolder}
+                  onMouseDown={(e) => e.stopPropagation()}
                   className="flex items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-text-secondary hover:bg-slate-50 hover:border-primary hover:text-primary transition-colors"
                 >
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
