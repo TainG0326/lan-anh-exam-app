@@ -23,18 +23,22 @@ function parseListenPort(): number {
 
 const PORT = parseListenPort();
 
-const allowedOrigins = [
-  'http://localhost:3001',
-  'http://localhost:3002',
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'https://teacher-web-rose.vercel.app',
-  'https://student-web-xi.vercel.app',
-];
-
+/**
+ * CORS: teacher-web / student-web trên Vercel + localhost.
+ * Dùng origin: true (phản chiếu Origin) + credentials — tránh lỗi preflight thiếu ACAO khi whitelist lệch ký tự / bản deploy cũ.
+ * Chỉ cho phép origin hợp lệ (localhost, *.vercel.app, danh sách cố định).
+ */
 function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true;
-  if (allowedOrigins.includes(origin)) return true;
+  const fixed = [
+    'http://localhost:3001',
+    'http://localhost:3002',
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'https://teacher-web-rose.vercel.app',
+    'https://student-web-xi.vercel.app',
+  ];
+  if (fixed.includes(origin)) return true;
   try {
     const host = new URL(origin).hostname;
     if (host.endsWith('.vercel.app')) return true;
@@ -47,21 +51,33 @@ function isOriginAllowed(origin: string | undefined): boolean {
 const corsOptions: cors.CorsOptions = {
   origin(origin: string | undefined, callback) {
     if (isOriginAllowed(origin)) {
-      callback(null, origin ?? true);
+      callback(null, true);
     } else {
       console.warn('[CORS] Blocked origin:', origin);
       callback(null, false);
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'Origin', 'Accept', 'X-Requested-With'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Cookie',
+    'Origin',
+    'Accept',
+    'Accept-Language',
+    'X-Requested-With',
+    'Cache-Control',
+    'Pragma',
+  ],
   exposedHeaders: ['Authorization'],
   optionsSuccessStatus: 204,
   maxAge: 86400,
+  preflightContinue: false,
 };
 
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
