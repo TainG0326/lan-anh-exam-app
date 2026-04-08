@@ -24,6 +24,11 @@ const DRAG_ACTIVE_CLASS =
   'border-primary bg-primary/[0.06] ring-4 ring-primary/10 scale-[1.01]';
 const DRAG_IDLE_CLASS = 'border-dashed border-[#648777]/35 bg-[#648777]/[0.04]';
 
+interface FileError {
+  fileName: string;
+  message: string;
+}
+
 export default function AIMagicImportModal({
   isOpen,
   onClose,
@@ -38,6 +43,8 @@ export default function AIMagicImportModal({
   const [editForm, setEditForm] = useState<AIQuestion | null>(null);
   const [error, setError] = useState('');
   const [batchInfo, setBatchInfo] = useState<{ filesProcessed?: number; filesWithErrors?: number } | null>(null);
+  const [fileErrors, setFileErrors] = useState<FileError[]>([]);
+  const [showErrors, setShowErrors] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
@@ -50,6 +57,8 @@ export default function AIMagicImportModal({
     setError('');
     setDragOver(false);
     setBatchInfo(null);
+    setFileErrors([]);
+    setShowErrors(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (folderInputRef.current) folderInputRef.current.value = '';
   };
@@ -113,6 +122,8 @@ export default function AIMagicImportModal({
     if (selectedFiles.length === 0) return;
     setStep('processing');
     setError('');
+    setFileErrors([]);
+    setShowErrors(false);
     try {
       const res = await aiImportService.importFiles(selectedFiles);
       if (res.success && res.questions.length > 0) {
@@ -121,22 +132,36 @@ export default function AIMagicImportModal({
           filesProcessed: res.filesProcessed,
           filesWithErrors: res.filesWithErrors,
         });
+        // Capture errors from server if any
+        if (res.errors && res.errors.length > 0) {
+          setFileErrors(res.errors.map((e) => ({ fileName: e.file, message: e.message })));
+        }
         setStep('review');
       } else {
-        setError(res.message || 'No questions could be extracted.');
+        // Check if server returned errors in the response
+        if (res.errors && res.errors.length > 0) {
+          setFileErrors(res.errors.map((e) => ({ fileName: e.file, message: e.message })));
+          setError(`Đã xử lý ${res.filesProcessed || selectedFiles.length} file. ${res.filesWithErrors || 0} file thất bại. Xem chi tiết bên dưới.`);
+        } else {
+          setError(res.message || 'Không trích xuất được câu hỏi nào.');
+        }
         setStep('upload');
       }
     } catch (err: unknown) {
-      const ax = err as { response?: { data?: { message?: string } }; message?: string };
+      const ax = err as { response?: { data?: { message?: string; errors?: { file: string; message: string }[] } }; message?: string };
       const base =
         ax?.response?.data?.message ||
         ax?.message ||
-        'Import failed. Please try again.';
+        'Import thất bại. Vui lòng thử lại.';
+      // Capture errors from error response if available
+      if (ax?.response?.data?.errors) {
+        setFileErrors(ax.response.data.errors.map((e: { file: string; message: string }) => ({ fileName: e.file, message: e.message })));
+      }
       const isNetwork =
         /network|fetch|failed to load|access denied|ERR_/i.test(String(base));
       setError(
         isNetwork
-          ? `${base} Check VPN/firewall or use incognito window.`
+          ? `${base} Kiểm tra VPN/firewall hoặc dùng cửa sổ ẩn danh.`
           : base
       );
       setStep('upload');
@@ -374,9 +399,35 @@ export default function AIMagicImportModal({
               )}
 
               {error && (
-                <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  {error}
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    {error}
+                  </div>
+                  {fileErrors.length > 0 && (
+                    <div className="rounded-xl border border-red-300 bg-white overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setShowErrors(!showErrors)}
+                        className="w-full flex items-center justify-between px-4 py-2 text-left bg-red-50 hover:bg-red-100 transition-colors"
+                      >
+                        <span className="text-xs font-semibold text-red-700">
+                          Xem chi tiet {fileErrors.length} file that bai
+                        </span>
+                        <span className="text-xs text-red-500">{showErrors ? 'An' : 'Hien'} thi</span>
+                      </button>
+                      {showErrors && (
+                        <div className="px-3 py-2 max-h-48 overflow-y-auto space-y-1">
+                          {fileErrors.map((err, idx) => (
+                            <div key={idx} className="text-xs p-2 bg-red-50 rounded border border-red-100">
+                              <p className="font-semibold text-red-600">{err.fileName}</p>
+                              <p className="text-red-500 mt-0.5 break-words">{err.message}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -436,6 +487,35 @@ export default function AIMagicImportModal({
                     </span>
                   </div>
                 </div>
+
+                {/* Error Details Section */}
+                {fileErrors.length > 0 && (
+                  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setShowErrors(!showErrors)}
+                      className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-red-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-5 w-5 text-red-500" />
+                        <span className="text-sm font-semibold text-red-700">
+                          {fileErrors.length} file{fileErrors.length !== 1 ? 's' : ''} failed to process
+                        </span>
+                      </div>
+                      <span className="text-xs text-red-500">{showErrors ? 'Hide' : 'Show'} details</span>
+                    </button>
+                    {showErrors && (
+                      <div className="px-4 pb-4 space-y-2">
+                        {fileErrors.map((err, idx) => (
+                          <div key={idx} className="bg-white rounded-lg border border-red-100 p-3">
+                            <p className="text-xs font-semibold text-red-600 truncate">{err.fileName}</p>
+                            <p className="text-xs text-red-500 mt-1">{err.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {extractedQuestions.length === 0 ? (
                   <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#648777]/35 bg-[#648777]/[0.04] py-10 text-center">

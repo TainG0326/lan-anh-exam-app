@@ -87,6 +87,65 @@ function getGeminiModel(genAI: GoogleGenerativeAI) {
   });
 }
 
+/** Phân loại lỗi để hiển thị thông điệp phù hợp cho user */
+function classifyError(msg: string): { category: string; suggestion: string } {
+  const lowerMsg = msg.toLowerCase();
+
+  if (lowerMsg.includes('503') || lowerMsg.includes('service unavailable') || lowerMsg.includes('high demand')) {
+    return {
+      category: 'Gemini quá tải (503)',
+      suggestion: 'Gemini đang bận, thử lại sau 1-2 phút'
+    };
+  }
+
+  if (lowerMsg.includes('401') || lowerMsg.includes('403') || lowerMsg.includes('api key') || lowerMsg.includes('authentication')) {
+    return {
+      category: 'Lỗi xác thực API',
+      suggestion: 'GEMINI_API_KEY không hợp lệ hoặc hết hạn'
+    };
+  }
+
+  if (lowerMsg.includes('quota') || lowerMsg.includes('limit') || lowerMsg.includes('exceeded')) {
+    return {
+      category: 'Vượt quota Gemini',
+      suggestion: 'Đã dùng hết quota API Gemini, nâng cấp hoặc đợi đầu tháng'
+    };
+  }
+
+  if (lowerMsg.includes('block') || lowerMsg.includes('safety') || lowerMsg.includes('harmful')) {
+    return {
+      category: 'AI chặn nội dung',
+      suggestion: 'Nội dung bị chặn bởi chính sách an toàn của Gemini'
+    };
+  }
+
+  if (lowerMsg.includes('timeout') || lowerMsg.includes('timed out')) {
+    return {
+      category: 'Xử lý quá lâu',
+      suggestion: 'Ảnh quá lớn hoặc phức tạp, thử ảnh nhỏ hơn'
+    };
+  }
+
+  if (lowerMsg.includes('empty') || lowerMsg.includes('no question') || lowerMsg.includes('cannot extract')) {
+    return {
+      category: 'Không trích xuất được',
+      suggestion: 'Ảnh không chứa câu hỏi rõ ràng, thử ảnh chất lượng tốt hơn'
+    };
+  }
+
+  if (lowerMsg.includes('network') || lowerMsg.includes('fetch') || lowerMsg.includes('connection')) {
+    return {
+      category: 'Lỗi mạng',
+      suggestion: 'Kết nối mạng không ổn định, kiểm tra VPN/firewall'
+    };
+  }
+
+  return {
+    category: 'Lỗi không xác định',
+    suggestion: 'Thử file khác hoặc liên hệ hỗ trợ'
+  };
+}
+
 /** Tránh throw từ response.text() khi bị chặn / không có candidate — trả lỗi rõ cho client. */
 function readGeminiText(result: GenerateContentResult): string {
   const response = result.response as {
@@ -121,6 +180,51 @@ interface GeminiQuestion {
   correctAnswer: string;
   points: number;
   explanation?: string;
+}
+
+/** Fallback: Trích xuất câu hỏi từ raw text khi JSON parsing thất bại */
+function extractQuestionsFromRawText(rawText: string, fileName: string): GeminiQuestion[] {
+  const questions: GeminiQuestion[] = [];
+
+  // Tìm các pattern phổ biến của câu hỏi trắc nghiệm
+  // Pattern 1: Câu hỏi với đáp án A, B, C, D
+  const questionPattern = /(?:^|\n)(.+?)\s*\n\s*[A-D]\s*[.:)]\s*(.+?)(?=\n\s*[A-D]\s*[.:)]\s*(.+?)){3}/gi;
+  const matches = rawText.matchAll(questionPattern);
+
+  for (const match of matches) {
+    const question = match[1]?.trim();
+    if (question && question.length > 5) {
+      questions.push({
+        question,
+        type: 'multiple-choice',
+        options: ['', '', '', ''],
+        correctAnswer: '',
+        points: 1,
+        explanation: 'Trích xuất tự động từ text (chưa xác định đáp án đúng)',
+      });
+    }
+  }
+
+  // Pattern 2: Tìm các dòng có số thứ tự câu hỏi (1., 2., câu 1, etc.)
+  const numberedPattern = /(?:^|\n)(?:\d+[.)]\s*|câu\s*\d+\s*)[.)\s]*(.+?)(?=\n|$)/gi;
+  const numberedMatches = rawText.matchAll(numberedPattern);
+
+  for (const match of numberedMatches) {
+    const question = match[1]?.trim();
+    if (question && question.length > 10 && !questions.find(q => q.question === question)) {
+      questions.push({
+        question,
+        type: 'multiple-choice',
+        options: ['', '', '', ''],
+        correctAnswer: '',
+        points: 1,
+        explanation: 'Trích xuất tự động từ text',
+      });
+    }
+  }
+
+  console.log(`[extractQuestionsFromRawText] ${fileName}: found ${questions.length} questions`);
+  return questions;
 }
 
 function buildGeminiPrompt(textContent: string): string {
@@ -244,18 +348,34 @@ router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, r
         console.log(`[AI Import Batch] file ${i + 1}/${files.length} (${file.originalname}): extracted ${qs.length} questions`);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        errors.push({ file: file.originalname, message: msg });
-        console.error(`[AI Import Batch] file ${file.originalname} failed:`, msg);
+        const errorInfo = classifyError(msg);
+        errors.push({
+          file: file.originalname,
+          message: `[${errorInfo.category}] ${msg}`
+        });
+        console.error(`[AI Import Batch] file ${file.originalname} failed (${errorInfo.category}):`, msg);
       } finally {
         await fs.unlink(file.path).catch(() => {});
       }
     }
 
     if (allQuestions.length === 0) {
+      const errorSummary = errors.map(e => `${e.file}: ${e.message}`).join(' | ');
       const errorMsg = errors.length > 0
-        ? `Không trích xuất được câu hỏi từ ${errors.length} file. Lỗi: ${errors.map(e => `${e.file}: ${e.message}`).join('; ')}`
+        ? `Khong trích xuất duoc cau hoi tu ${errors.length} file. Chi tiet: ${errorSummary}`
         : 'No questions could be extracted.';
-      return res.status(422).json({ success: false, message: errorMsg });
+      return res.status(422).json({
+        success: false,
+        message: errorMsg,
+        filesProcessed: files.length,
+        filesWithErrors: errors.length,
+        errors: errors.length > 0 ? errors : undefined
+      });
+    }
+
+    // Partial success - some questions extracted, some files failed
+    if (errors.length > 0) {
+      console.log(`[AI Import Batch] Partial success: ${allQuestions.length} questions from ${files.length - errors.length} files, ${errors.length} files failed`);
     }
 
     res.json({
@@ -326,7 +446,12 @@ Map A→0, B→1, C→2, D→3. Return ONLY JSON, no explanation.`;
     try {
       const parsed = JSON.parse(jsonStr);
       if (Array.isArray(parsed)) {
-        return parsed.map((q: any) => ({
+        // Filter out empty questions
+        const validQuestions = parsed.filter((q: any) => q.question && q.question.trim().length > 0);
+        if (validQuestions.length === 0 && parsed.length > 0) {
+          console.warn(`[AI Import] File ${originalname}: AI tra ve ${parsed.length} cau hoi nhung deu rong`);
+        }
+        return validQuestions.map((q: any) => ({
           question: q.question || '',
           type: 'multiple-choice' as const,
           options: Array.isArray(q.options) ? q.options : ['', '', '', ''],
@@ -337,9 +462,18 @@ Map A→0, B→1, C→2, D→3. Return ONLY JSON, no explanation.`;
           explanation: q.explanation || '',
         }));
       }
-    } catch {
-      return [];
+    } catch (parseErr: unknown) {
+      const parseMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+      console.error(`[AI Import] JSON parse error for ${originalname}:`, parseMsg);
+      // Thử fallback: xử lý text thuần thay vì JSON
+      const questionsFromText = extractQuestionsFromRawText(rawText, originalname);
+      if (questionsFromText.length > 0) {
+        console.log(`[AI Import] Fallback: extracted ${questionsFromText.length} questions from raw text`);
+        return questionsFromText;
+      }
     }
+    // Nếu không trích xuất được gì, trả về mảng rỗng (không throw để không ảnh hưởng các file khác)
+    console.warn(`[AI Import] Khong trích xuất duoc cau hoi tu ${originalname}`);
     return [];
   }
 
