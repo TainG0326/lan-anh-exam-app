@@ -18,6 +18,9 @@ import notificationRoutes from './routes/notificationRoutes.js';
 dotenv.config();
 
 const app = express();
+// Sau proxy Render / Cloudflare — cần cho req.ip / secure cookie đúng (không ảnh hưởng cổng lắng nghe)
+app.set('trust proxy', 1);
+
 const PORT = process.env.PORT || 5000;
 
 // CORS configuration — allow all origins for development + all Vercel production URLs

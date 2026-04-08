@@ -5,11 +5,11 @@ services:
     rootDir: server
     buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
+    # Render tự gán PORT — không set tay (dễ lệch với proxy → Cloudflare 521)
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
       - key: SUPABASE_URL
         value: https://hvophbiqtpffokpienki.supabase.co
       - key: SUPABASE_ANON_KEY
