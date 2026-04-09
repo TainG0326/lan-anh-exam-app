@@ -67,6 +67,36 @@ const AI_KEYS_MISSING_MSG =
  * 50 ảnh / 10 = 5 requests → còn dư 15 requests/ngày */
 const IMAGES_PER_BATCH = 10;
 
+// ── Rate limit tracker ──────────────────────────────────────────────────────
+const MAX_GEMINI_REQUESTS_PER_DAY = 20;
+let dailyRequestCount = 0;
+let dailyResetTime = getTodayResetUTC();
+
+function getTodayResetUTC(): Date {
+  // Reset lúc 00:00 UTC mỗi ngày
+  const now = new Date();
+  const reset = new Date(now);
+  reset.setUTCHours(0, 0, 0, 0);
+  reset.setUTCDate(reset.getUTCDate() + 1);
+  return reset;
+}
+
+function shouldGeminiBeSkipped(): boolean {
+  const now = new Date();
+  if (now >= dailyResetTime) {
+    dailyRequestCount = 0;
+    dailyResetTime = getTodayResetUTC();
+    console.log('[RateLimit] Gemini quota reset for new day');
+  }
+  return dailyRequestCount >= MAX_GEMINI_REQUESTS_PER_DAY;
+}
+
+function recordGeminiRequest(): void {
+  dailyRequestCount++;
+  const remaining = Math.max(0, MAX_GEMINI_REQUESTS_PER_DAY - dailyRequestCount);
+  console.log(`[RateLimit] Gemini request #${dailyRequestCount}/${MAX_GEMINI_REQUESTS_PER_DAY} (remaining: ${remaining})`);
+}
+
 /** Retry tự động khi Claude trả 529 (model overloaded) hoặc 429 (rate limit). */
 const MAX_RETRIES_CLAUDE = 3;
 const RETRY_DELAY_CLAUDE_MS = 2000;
@@ -334,6 +364,15 @@ async function processBatchImagesWithGemini(
   batchIndex: number,
   geminiKey: string
 ): Promise<{ originalname: string; questions: GeminiQuestion[] }[]> {
+  if (shouldGeminiBeSkipped()) {
+    const resetIn = Math.ceil((dailyResetTime.getTime() - Date.now()) / 1000);
+    throw new Error(
+      `[RateLimit] Gemini quota đã hết (${MAX_GEMINI_REQUESTS_PER_DAY}/${MAX_GEMINI_REQUESTS_PER_DAY}). ` +
+      `Reset tự động trong ${Math.floor(resetIn / 3600)}h ${Math.floor((resetIn % 3600) / 60)}m. ` +
+      `Retry sau khi quota reset hoặc thêm ANTHROPIC_API_KEY làm fallback.`
+    );
+  }
+
   const genAI = new GoogleGenerativeAI(geminiKey);
   const model = getGeminiModel(genAI);
 
@@ -357,6 +396,8 @@ Rules:
     () => model.generateContent(parts),
     `Gemini Batch ${batchIndex}`
   );
+
+  recordGeminiRequest();
 
   const rawText = readGeminiText(result).trim();
   const jsonMatch = rawText.match(/\[[\s\S]*\]/);
@@ -1020,6 +1061,14 @@ async function processImageWithGemini(
   mimeStr: string,
   GEMINI_KEY: string
 ): Promise<GeminiQuestion[]> {
+  if (shouldGeminiBeSkipped()) {
+    const resetIn = Math.ceil((dailyResetTime.getTime() - Date.now()) / 1000);
+    throw new Error(
+      `[RateLimit] Gemini quota đã hết (${MAX_GEMINI_REQUESTS_PER_DAY}/${MAX_GEMINI_REQUESTS_PER_DAY}). ` +
+      `Reset tự động trong ${Math.floor(resetIn / 3600)}h ${Math.floor((resetIn % 3600) / 60)}m.`
+    );
+  }
+
   const genAI = new GoogleGenerativeAI(GEMINI_KEY);
   const model = getGeminiModel(genAI);
 
@@ -1036,6 +1085,8 @@ Map A→0, B→1, C→2, D→3. Return ONLY JSON, no explanation.`;
     ]),
     'Gemini Vision'
   );
+
+  recordGeminiRequest();
 
   const rawText = readGeminiText(result).trim();
   const jsonMatch = rawText.match(/\[[\s\S]*\]/);
