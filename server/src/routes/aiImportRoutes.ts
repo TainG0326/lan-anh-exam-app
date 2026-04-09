@@ -61,14 +61,15 @@ function hasConfiguredAiProvider(): boolean {
 }
 
 const AI_KEYS_MISSING_MSG =
-  'Chưa cấu hình AI trên server. Thêm biến ANTHROPIC_API_KEY (khuyến nghị) hoặc GEMINI_API_KEY trên hosting (ví dụ Render).';
+  'AI not configured on server. Add ANTHROPIC_API_KEY (recommended) or GEMINI_API_KEY on hosting (e.g. Render).';
 
 /** Số ảnh gửi trong 1 request — Gemini free-tier giới hạn 20 req/ngày
- * 50 ảnh / 10 = 5 requests → còn dư 15 requests/ngày */
-const IMAGES_PER_BATCH = 10;
+ * 50 ảnh / 5 = 10 requests → còn dư quota */
+const IMAGES_PER_BATCH = 5;
 
 // ── Rate limit tracker ──────────────────────────────────────────────────────
-const MAX_GEMINI_REQUESTS_PER_DAY = 20;
+const MAX_GEMINI_REQUESTS_PER_DAY = 1000;
+const BATCH_DELAY_MS = 6000; // 6 seconds delay between batches to avoid 503
 let dailyRequestCount = 0;
 let dailyResetTime = getTodayResetUTC();
 
@@ -127,7 +128,7 @@ async function claudeWithRetry<T>(fn: () => Promise<T>, label = 'Claude call'): 
           delay = RETRY_DELAY_CLAUDE_MS * (attempt + 1);
         }
         const delayType = isRateLimit ? 'rate limit (429)' : 'overloaded (529)';
-        console.warn(`[Claude] ${label} bị ${delayType} (lần ${attempt + 1}), thử lại sau ${Math.round(delay/1000)}s...`);
+        console.warn(`[Claude] ${label} hit ${delayType} (attempt ${attempt + 1}), retrying in ${Math.round(delay/1000)}s...`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -143,42 +144,42 @@ function classifyClaudeError(msg: string): { category: string; suggestion: strin
 
   if (lowerMsg.includes('529') || lowerMsg.includes('overloaded')) {
     return {
-      category: 'Claude quá tải (529)',
-      suggestion: 'Claude đang bận, thử lại sau 1-2 phút'
+      category: 'Claude overloaded (529)',
+      suggestion: 'Claude is busy, try again in 1-2 minutes'
     };
   }
 
   if (lowerMsg.includes('401') || lowerMsg.includes('403') || lowerMsg.includes('api key') || lowerMsg.includes('authentication')) {
     return {
-      category: 'Lỗi xác thực API Claude',
-      suggestion: 'ANTHROPIC_API_KEY không hợp lệ hoặc hết hạn'
+      category: 'Claude API authentication error',
+      suggestion: 'ANTHROPIC_API_KEY is invalid or expired'
     };
   }
 
   if (lowerMsg.includes('quota') || lowerMsg.includes('limit') || lowerMsg.includes('exceeded')) {
     return {
-      category: 'Vượt quota Claude',
-      suggestion: 'Đã dùng hết quota Claude, kiểm tra Anthropic billing'
+      category: 'Claude quota exceeded',
+      suggestion: 'Claude quota exhausted, check Anthropic billing'
     };
   }
 
   if (lowerMsg.includes('image') && lowerMsg.includes('invalid')) {
     return {
-      category: 'Lỗi định dạng ảnh',
-      suggestion: 'Ảnh không hỗ trợ, thử định dạng JPG hoặc PNG'
+      category: 'Image format error',
+      suggestion: 'Image not supported, try JPG or PNG format'
     };
   }
 
   if (lowerMsg.includes('empty') || lowerMsg.includes('no question') || lowerMsg.includes('cannot extract')) {
     return {
-      category: 'Không trích xuất được',
-      suggestion: 'Ảnh không chứa câu hỏi rõ ràng, thử ảnh chất lượng tốt hơn'
+      category: 'Cannot extract questions',
+      suggestion: 'Image does not contain clear questions, try higher quality images'
     };
   }
 
   return {
-    category: 'Lỗi không xác định',
-    suggestion: 'Thử file khác hoặc liên hệ hỗ trợ'
+    category: 'Unknown error',
+    suggestion: 'Try a different file or contact support'
   };
 }
 
@@ -189,7 +190,7 @@ async function processImageWithClaude(
   mimeStr: string
 ): Promise<GeminiQuestion[]> {
   if (!ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY không được cấu hình trên server');
+    throw new Error('ANTHROPIC_API_KEY not configured on server');
   }
 
   const client = new Anthropic();
@@ -236,7 +237,7 @@ Map: A→0, B→1, C→2, D→3. Return ONLY valid JSON array, no markdown, no e
 
   const rawText = response.content[0];
   if (rawText.type !== 'text') {
-    throw new Error('Claude không trả về text, thử lại sau');
+    throw new Error('Claude did not return text, try again later');
   }
 
   const text = rawText.text.trim();
@@ -248,7 +249,7 @@ Map: A→0, B→1, C→2, D→3. Return ONLY valid JSON array, no markdown, no e
     if (Array.isArray(parsed)) {
       const validQuestions = parsed.filter((q: any) => q.question && q.question.trim().length > 0);
       if (validQuestions.length === 0 && parsed.length > 0) {
-        console.warn(`[Claude Vision] File ${originalname}: AI trả về ${parsed.length} câu hỏi nhưng đều rỗng`);
+        console.warn(`[Claude Vision] File ${originalname}: AI returned ${parsed.length} questions but all are empty`);
       }
       return validQuestions.map((q: any) => ({
         question: q.question || '',
@@ -271,7 +272,7 @@ Map: A→0, B→1, C→2, D→3. Return ONLY valid JSON array, no markdown, no e
     }
   }
 
-  console.warn(`[Claude Vision] Không trích xuất được câu hỏi từ ${originalname}`);
+  console.warn(`[Claude Vision] Cannot extract questions from ${originalname}`);
   return [];
 }
 
@@ -286,19 +287,19 @@ async function processBatchImagesWithClaude(
 
   const client = new Anthropic();
 
-  const prompt = `You are a teacher-exam question extractor. Given ${images.length} images of exam questions, extract ALL multiple-choice questions from ALL images and return a JSON array.
+  const prompt = `You are a teacher-exam question extractor. You will receive ${images.length} images of exam questions. Extract ALL multiple-choice questions from ALL images and return a JSON array.
 
-For each image, prefix the question with its filename so you know which image it came from.
+CRITICAL: You MUST include "sourceFile" field for EVERY question with the exact filename of the image it came from.
+Image list and their filenames:
+${images.map((img, i) => `Image ${i + 1}: ${img.originalname}`).join('\n')}
 
 Rules:
-- Each question object: { "question": "text", "type": "multiple-choice", "options": ["A text","B text","C text","D text"], "correctAnswer": "0"-"3", "points": 1, "explanation": "", "sourceFile": "filename" }
+- Each question MUST have: { "question": "...", "type": "multiple-choice", "options": ["A text","B text","C text","D text"], "correctAnswer": "0"-"3", "points": 1, "explanation": "", "sourceFile": "EXACT_FILENAME" }
+- "sourceFile" must be the EXACT filename (e.g., "Q1.jpg") - NOT the image index, NOT a path, NOT a description
+- Prefix question text with "【FILENAME】 " so matching works even if sourceFile field is missing
+  Example: "【Q1.jpg】 This is the question text about..."
 - Map: A→0, B→1, C→2, D→3
-- Return ONLY valid JSON array, no markdown, no explanation outside the array
-- If an image has no questions, skip it (don't include in array)
-- Include "sourceFile" field with the original filename for each question
-
-Example:
-[{"question":"(Q1.jpg) What is...?","type":"multiple-choice","options":["A","B","C","D"],"correctAnswer":"0","points":1,"explanation":"","sourceFile":"Q1.jpg"}]`;
+- Return ONLY valid JSON array (no markdown, no text before or after the array)`;
 
   console.log(`[Claude Batch ${batchIndex}] Processing ${images.length} images`);
   const base64Images = images.map(img => img.imageData.toString('base64'));
@@ -323,7 +324,7 @@ Example:
 
   const rawText = response.content[0];
   if (rawText.type !== 'text') {
-    throw new Error('Claude không trả về text');
+    throw new Error('Claude did not return text');
   }
 
   const text = rawText.text.trim();
@@ -337,19 +338,51 @@ Example:
   try {
     const parsed = JSON.parse(jsonStr);
     if (Array.isArray(parsed)) {
+      let totalAssigned = 0;
+      let sourceFileMissing = 0;
+
       parsed.forEach((q: any) => {
         const src = q.sourceFile || '';
         const baseSrc = src.replace(/^.*[\\/]/, '').trim();
-        const matched = baseSrc ? (resultMap[baseSrc] !== undefined ? baseSrc : fileOrder.find(f => baseSrc.includes(f) || f.includes(baseSrc)) || fileOrder[0]) : fileOrder[0];
-        resultMap[matched]?.push({
-          question: (q.question || '').replace(/^\([^)]+\)\s*/, ''),
-          type: 'multiple-choice' as const,
-          options: Array.isArray(q.options) ? q.options : ['', '', '', ''],
-          correctAnswer: typeof q.correctAnswer === 'number' ? String(q.correctAnswer) : (q.correctAnswer || ''),
-          points: typeof q.points === 'number' ? q.points : 1,
-          explanation: q.explanation || '',
-        });
+
+        // Ưu tiên 1: sourceFile field chính xác
+        let matched = baseSrc && resultMap[baseSrc] !== undefined ? baseSrc : '';
+
+        // Ưu tiên 2: tìm trong 【FILENAME】 prefix của question text
+        if (!matched) {
+          const questionText = q.question || '';
+          const bracketMatch = questionText.match(/【([^】]+)】/);
+          if (bracketMatch) {
+            const bracketSrc = bracketMatch[1].trim();
+            matched = resultMap[bracketSrc] !== undefined ? bracketSrc
+              : fileOrder.find(f => bracketSrc.includes(f) || f.includes(bracketSrc)) || '';
+          }
+        }
+
+        // Ưu tiên 3: fuzzy match
+        if (!matched) {
+          matched = fileOrder.find(f => baseSrc.includes(f) || f.includes(baseSrc)) || '';
+        }
+
+        if (matched) {
+          resultMap[matched].push({
+            question: (q.question || '').replace(/^\【[^】]*\】【?\s*/g, '').replace(/^\([^)]+\)\s*/, ''),
+            type: 'multiple-choice' as const,
+            options: Array.isArray(q.options) ? q.options : ['', '', '', ''],
+            correctAnswer: typeof q.correctAnswer === 'number' ? String(q.correctAnswer) : (q.correctAnswer || ''),
+            points: typeof q.points === 'number' ? q.points : 1,
+            explanation: q.explanation || '',
+          });
+          totalAssigned++;
+        } else {
+          sourceFileMissing++;
+        }
       });
+
+      console.log(`[Claude Batch ${batchIndex}] Assigned ${totalAssigned}/${parsed.length} questions. sourceFile missing: ${sourceFileMissing}`);
+      if (sourceFileMissing > 0) {
+        console.warn(`[Claude Batch ${batchIndex}] WARNING: ${sourceFileMissing} questions could not be assigned to a file. Check AI response format.`);
+      }
     }
   } catch (parseErr: unknown) {
     console.error(`[Claude Batch ${batchIndex}] JSON parse error:`, parseErr instanceof Error ? parseErr.message : String(parseErr));
@@ -367,24 +400,28 @@ async function processBatchImagesWithGemini(
   if (shouldGeminiBeSkipped()) {
     const resetIn = Math.ceil((dailyResetTime.getTime() - Date.now()) / 1000);
     throw new Error(
-      `[RateLimit] Gemini quota đã hết (${MAX_GEMINI_REQUESTS_PER_DAY}/${MAX_GEMINI_REQUESTS_PER_DAY}). ` +
-      `Reset tự động trong ${Math.floor(resetIn / 3600)}h ${Math.floor((resetIn % 3600) / 60)}m. ` +
-      `Retry sau khi quota reset hoặc thêm ANTHROPIC_API_KEY làm fallback.`
+      `[RateLimit] Gemini quota exhausted (${MAX_GEMINI_REQUESTS_PER_DAY}/${MAX_GEMINI_REQUESTS_PER_DAY}). ` +
+      `Auto reset in ${Math.floor(resetIn / 3600)}h ${Math.floor((resetIn % 3600) / 60)}m. ` +
+      `Retry after quota reset or add ANTHROPIC_API_KEY as fallback.`
     );
   }
 
   const genAI = new GoogleGenerativeAI(geminiKey);
   const model = getGeminiModel(genAI);
 
-  const prompt = `You are a teacher-exam question extractor. Given ${images.length} images of exam questions, extract ALL multiple-choice questions from ALL images and return a JSON array.
+  const prompt = `You are a teacher-exam question extractor. You will receive ${images.length} images of exam questions. Extract ALL multiple-choice questions from ALL images and return a JSON array.
 
-For each question, include the source filename.
+CRITICAL: You MUST include "sourceFile" field for EVERY question with the exact filename of the image it came from.
+Image list and their filenames:
+${images.map((img, i) => `Image ${i + 1}: ${img.originalname}`).join('\n')}
 
 Rules:
-- Each question: { "question": "text", "type": "multiple-choice", "options": ["A text","B text","C text","D text"], "correctAnswer": "0"-"3", "points": 1, "explanation": "", "sourceFile": "filename" }
+- Each question MUST have: { "question": "...", "type": "multiple-choice", "options": ["A text","B text","C text","D text"], "correctAnswer": "0"-"3", "points": 1, "explanation": "", "sourceFile": "EXACT_FILENAME" }
+- "sourceFile" must be the EXACT filename (e.g., "Q1.jpg") - NOT the image index, NOT a path, NOT a description
+- Prefix question text with "【FILENAME】 " so matching works even if sourceFile field is missing
+  Example: "【Q1.jpg】 This is the question text about..."
 - Map: A→0, B→1, C→2, D→3
-- Return ONLY valid JSON array, no markdown, no explanation outside the array
-- Include "sourceFile" field with the original filename for each question`;
+- Return ONLY valid JSON array (no markdown, no text before or after the array)`;
 
   console.log(`[Gemini Batch ${batchIndex}] Processing ${images.length} images`);
   const parts: any[] = images.map(img => ({
@@ -410,19 +447,51 @@ Rules:
   try {
     const parsed = JSON.parse(jsonStr);
     if (Array.isArray(parsed)) {
+      let totalAssigned = 0;
+      let sourceFileMissing = 0;
+
       parsed.forEach((q: any) => {
         const src = q.sourceFile || '';
         const baseSrc = src.replace(/^.*[\\/]/, '').trim();
-        const matched = baseSrc ? (resultMap[baseSrc] !== undefined ? baseSrc : fileOrder.find(f => baseSrc.includes(f) || f.includes(baseSrc)) || fileOrder[0]) : fileOrder[0];
-        resultMap[matched]?.push({
-          question: (q.question || '').replace(/^\([^)]+\)\s*/, ''),
-          type: 'multiple-choice' as const,
-          options: Array.isArray(q.options) ? q.options : ['', '', '', ''],
-          correctAnswer: typeof q.correctAnswer === 'number' ? String(q.correctAnswer) : (q.correctAnswer || ''),
-          points: typeof q.points === 'number' ? q.points : 1,
-          explanation: q.explanation || '',
-        });
+
+        // Ưu tiên 1: sourceFile field chính xác
+        let matched = baseSrc && resultMap[baseSrc] !== undefined ? baseSrc : '';
+
+        // Ưu tiên 2: tìm trong 【FILENAME】 prefix của question text
+        if (!matched) {
+          const questionText = q.question || '';
+          const bracketMatch = questionText.match(/【([^】]+)】/);
+          if (bracketMatch) {
+            const bracketSrc = bracketMatch[1].trim();
+            matched = resultMap[bracketSrc] !== undefined ? bracketSrc
+              : fileOrder.find(f => bracketSrc.includes(f) || f.includes(bracketSrc)) || '';
+          }
+        }
+
+        // Ưu tiên 3: fuzzy match với tên file trong sourceFile
+        if (!matched) {
+          matched = fileOrder.find(f => baseSrc.includes(f) || f.includes(baseSrc)) || '';
+        }
+
+        if (matched) {
+          resultMap[matched].push({
+            question: (q.question || '').replace(/^\【[^】]*\】【?\s*/g, '').replace(/^\([^)]+\)\s*/, ''),
+            type: 'multiple-choice' as const,
+            options: Array.isArray(q.options) ? q.options : ['', '', '', ''],
+            correctAnswer: typeof q.correctAnswer === 'number' ? String(q.correctAnswer) : (q.correctAnswer || ''),
+            points: typeof q.points === 'number' ? q.points : 1,
+            explanation: q.explanation || '',
+          });
+          totalAssigned++;
+        } else {
+          sourceFileMissing++;
+        }
       });
+
+      console.log(`[Gemini Batch ${batchIndex}] Assigned ${totalAssigned}/${parsed.length} questions. sourceFile missing: ${sourceFileMissing}`);
+      if (sourceFileMissing > 0) {
+        console.warn(`[Gemini Batch ${batchIndex}] WARNING: ${sourceFileMissing} questions could not be assigned to a file. Check AI response format.`);
+      }
     }
   } catch (parseErr: unknown) {
     console.error(`[Gemini Batch ${batchIndex}] JSON parse error:`, parseErr instanceof Error ? parseErr.message : String(parseErr));
@@ -437,7 +506,7 @@ async function processTextWithClaude(
   originalname: string
 ): Promise<GeminiQuestion[]> {
   if (!ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY không được cấu hình trên server');
+    throw new Error('ANTHROPIC_API_KEY not configured on server');
   }
 
   const client = new Anthropic();
@@ -469,7 +538,7 @@ ${textContent.slice(0, 12000)}`;
 
   const rawText = response.content[0];
   if (rawText.type !== 'text') {
-    throw new Error('Claude không trả về text, thử lại sau');
+    throw new Error('Claude did not return text, try again later');
   }
 
   const text = rawText.text.trim();
@@ -491,7 +560,7 @@ ${textContent.slice(0, 12000)}`;
       }));
     }
   } catch {
-    throw new Error('Claude không phân tích được câu hỏi từ file này. Hãy thử file khác hoặc nhập câu hỏi thủ công.');
+    throw new Error('Claude could not parse questions from this file. Try a different file or enter questions manually.');
   }
 
   return [];
@@ -530,7 +599,7 @@ async function geminiWithRetry<T>(fn: () => Promise<T>, label = 'Gemini call'): 
           delay = RETRY_DELAY_MS * (attempt + 1);
         }
         const delayType = is429Quota ? 'quota (429)' : '503';
-        console.warn(`[AI Import] ${label} bị ${delayType} (lần ${attempt + 1}), thử lại sau ${Math.round(delay/1000)}s...`);
+        console.warn(`[AI Import] ${label} hit ${delayType} (attempt ${attempt + 1}), retrying in ${Math.round(delay/1000)}s...`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -561,56 +630,56 @@ function classifyError(msg: string): { category: string; suggestion: string } {
 
   if (lowerMsg.includes('503') || lowerMsg.includes('service unavailable') || lowerMsg.includes('high demand')) {
     return {
-      category: 'Gemini quá tải (503)',
-      suggestion: 'Gemini đang bận, thử lại sau 1-2 phút'
+      category: 'Gemini overloaded (503)',
+      suggestion: 'Gemini is busy, try again in 1-2 minutes'
     };
   }
 
   if (lowerMsg.includes('401') || lowerMsg.includes('403') || lowerMsg.includes('api key') || lowerMsg.includes('authentication')) {
     return {
-      category: 'Lỗi xác thực API',
-      suggestion: 'GEMINI_API_KEY không hợp lệ hoặc hết hạn'
+      category: 'API authentication error',
+      suggestion: 'GEMINI_API_KEY is invalid or expired'
     };
   }
 
   if (lowerMsg.includes('quota') || lowerMsg.includes('limit') || lowerMsg.includes('exceeded')) {
     return {
-      category: 'Vượt quota Gemini',
-      suggestion: 'Đã dùng hết quota API Gemini, nâng cấp hoặc đợi đầu tháng'
+      category: 'Gemini quota exceeded',
+      suggestion: 'Gemini API quota exhausted, upgrade plan or wait until next billing cycle'
     };
   }
 
   if (lowerMsg.includes('block') || lowerMsg.includes('safety') || lowerMsg.includes('harmful')) {
     return {
-      category: 'AI chặn nội dung',
-      suggestion: 'Nội dung bị chặn bởi chính sách an toàn của Gemini'
+      category: 'AI blocked content',
+      suggestion: 'Content blocked by Gemini safety policy'
     };
   }
 
   if (lowerMsg.includes('timeout') || lowerMsg.includes('timed out')) {
     return {
-      category: 'Xử lý quá lâu',
-      suggestion: 'Ảnh quá lớn hoặc phức tạp, thử ảnh nhỏ hơn'
+      category: 'Processing timeout',
+      suggestion: 'Image is too large or complex, try smaller images'
     };
   }
 
   if (lowerMsg.includes('empty') || lowerMsg.includes('no question') || lowerMsg.includes('cannot extract')) {
     return {
-      category: 'Không trích xuất được',
-      suggestion: 'Ảnh không chứa câu hỏi rõ ràng, thử ảnh chất lượng tốt hơn'
+      category: 'Cannot extract questions',
+      suggestion: 'Image does not contain clear questions, try higher quality images'
     };
   }
 
   if (lowerMsg.includes('network') || lowerMsg.includes('fetch') || lowerMsg.includes('connection')) {
     return {
-      category: 'Lỗi mạng',
-      suggestion: 'Kết nối mạng không ổn định, kiểm tra VPN/firewall'
+      category: 'Network error',
+      suggestion: 'Network connection unstable, check VPN/firewall'
     };
   }
 
   return {
-    category: 'Lỗi không xác định',
-    suggestion: 'Thử file khác hoặc liên hệ hỗ trợ'
+    category: 'Unknown error',
+    suggestion: 'Try a different file or contact support'
   };
 }
 
@@ -629,13 +698,13 @@ function readGeminiText(result: GenerateContentResult): string {
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(
       msg.includes('block') || msg.includes('Block')
-        ? 'AI từ chối xử lý nội dung (chính sách an toàn). Thử file khác hoặc nhập câu hỏi thủ công.'
+        ? 'AI refused to process content (safety policy). Try a different file or enter questions manually.'
         : msg
     );
   }
   if (response.promptFeedback?.blockReason) {
     throw new Error(
-      'AI không xử lý được nội dung (bị chặn). Thử đổi file hoặc trích đoạn văn bản ngắn hơn.'
+      'AI could not process content (blocked). Try a different file or shorter text excerpt.'
     );
   }
   return '';
@@ -668,7 +737,7 @@ function extractQuestionsFromRawText(rawText: string, fileName: string): GeminiQ
         options: ['', '', '', ''],
         correctAnswer: '',
         points: 1,
-        explanation: 'Trích xuất tự động từ text (chưa xác định đáp án đúng)',
+        explanation: 'Auto-extracted from text (correct answer not identified)',
       });
     }
   }
@@ -686,7 +755,7 @@ function extractQuestionsFromRawText(rawText: string, fileName: string): GeminiQ
         options: ['', '', '', ''],
         correctAnswer: '',
         points: 1,
-        explanation: 'Trích xuất tự động từ text',
+        explanation: 'Auto-extracted from text',
       });
     }
   }
@@ -756,7 +825,7 @@ router.post('/import', aiUploadMiddleware, async (req: AuthRequest, res) => {
       await fs.unlink(filePath).catch(() => {});
       return res.status(500).json({
         success: false,
-        message: 'Chưa cấu hình GEMINI_API_KEY trên server (Render).'
+        message: 'GEMINI_API_KEY not configured on server (Render).'
       });
     }
 
@@ -793,9 +862,9 @@ router.post('/import', aiUploadMiddleware, async (req: AuthRequest, res) => {
     const isGeminiFetch = /GoogleGenerativeAI|fetching from|API key|API_KEY|401|403|404/i.test(msg);
     const status = is503 || isGeminiFetch ? 502 : 500;
     const clientMsg = is503
-      ? 'AI đang quá tải (503). Vui lòng chờ 1–2 phút rồi thử lại.'
+      ? 'AI is overloaded (503). Please wait 1-2 minutes and try again.'
       : isGeminiFetch
-      ? 'Dịch vụ AI tạm thời lỗi hoặc cấu hình API chưa đúng trên server. Kiểm tra GEMINI_API_KEY hoặc ANTHROPIC_API_KEY trên Render.'
+      ? 'AI service temporarily error or API configuration incorrect on server. Check GEMINI_API_KEY or ANTHROPIC_API_KEY on Render.'
       : msg || 'AI import failed';
     res.status(status).json({ success: false, message: clientMsg });
   }
@@ -818,7 +887,7 @@ router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, r
       await Promise.all(files.map((f) => fs.unlink(f.path).catch(() => {})));
       return res.status(500).json({
         success: false,
-        message: 'Chưa cấu hình GEMINI_API_KEY trên server (Render).'
+        message: 'GEMINI_API_KEY not configured on server (Render).'
       });
     }
 
@@ -872,6 +941,11 @@ router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, r
       } finally {
         await Promise.all(batch.map(f => fs.unlink(f.path).catch(() => {})));
       }
+
+      // 4-second delay between batches to avoid rate limiting
+      if (batchIdx < Math.ceil(imageFiles.length / IMAGES_PER_BATCH)) {
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+      }
     }
 
     // ── Non-image (PDF/DOCX): Gemini Flash text ──
@@ -892,7 +966,7 @@ router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, r
     if (allQuestions.length === 0) {
       const errorSummary = errors.map(e => `${e.file}: ${e.message}`).join(' | ');
       const errorMsg = errors.length > 0
-        ? `Khong trích xuất duoc cau hoi tu ${errors.length} file. Chi tiet: ${errorSummary}`
+        ? `Cannot extract questions from ${errors.length} files. Details: ${errorSummary}`
         : 'No questions could be extracted.';
       return res.status(422).json({
         success: false,
@@ -936,9 +1010,9 @@ router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, r
     const isGeminiFetch = /GoogleGenerativeAI|API key|401|403|404/i.test(msg);
     const status = is503 || isGeminiFetch ? 502 : 500;
     const clientMsg = is503
-      ? 'AI đang quá tải (503). Vui lòng chờ 1–2 phút rồi thử lại.'
+      ? 'AI is overloaded (503). Please wait 1-2 minutes and try again.'
       : isGeminiFetch
-      ? 'Dịch vụ AI tạm thời lỗi. Kiểm tra API keys trên Render.'
+      ? 'AI service temporarily error. Check API keys on Render.'
       : msg || 'Batch import failed';
     res.status(status).json({ success: false, message: clientMsg });
   }
@@ -976,28 +1050,28 @@ async function processSingleFile(
 
         console.warn(
           isCreditExhausted
-            ? `[AI Import] Claude hết credit cho ${originalname}: ${claudeMsg}`
-            : `[AI Import] Claude Vision thất bại cho ${originalname}: ${claudeMsg}`
+            ? `[AI Import] Claude out of credit for ${originalname}: ${claudeMsg}`
+            : `[AI Import] Claude Vision failed for ${originalname}: ${claudeMsg}`
         );
 
-        // Fallback sang Gemini nếu có key
+        // Fallback to Gemini if key available
         if (geminiKey) {
-          console.log(`[AI Import] Fallback sang Gemini Vision cho ${originalname}`);
+          console.log(`[AI Import] Falling back to Gemini Vision for ${originalname}`);
           try {
             return await processImageWithGemini(imageData, originalname, mimeStr, geminiKey);
           } catch (geminiErr: unknown) {
             const geminiMsg = geminiErr instanceof Error ? geminiErr.message : String(geminiErr);
-            console.error(`[AI Import] Gemini Vision cũng thất bại cho ${originalname}: ${geminiMsg}`);
-            throw claudeErr; // Trả về lỗi Claude gốc
+            console.error(`[AI Import] Gemini Vision also failed for ${originalname}: ${geminiMsg}`);
+            throw claudeErr; // Return original Claude error
           }
         }
         throw claudeErr;
       }
     }
 
-    // Không có Claude → dùng Gemini trực tiếp
+    // No Claude available -> use Gemini directly
     if (!geminiKey) {
-      throw new Error('Không có AI provider nào được cấu hình (ANTHROPIC_API_KEY hoặc GEMINI_API_KEY)');
+      throw new Error('No AI provider configured (ANTHROPIC_API_KEY or GEMINI_API_KEY)');
     }
     return await processImageWithGemini(imageData, originalname, mimeStr, geminiKey);
   }
@@ -1008,7 +1082,7 @@ async function processSingleFile(
     extractedText = await extractTextFromFile(filePath, mimetype, originalname);
   } catch (extractErr: unknown) {
     const msg = extractErr instanceof Error ? extractErr.message : String(extractErr);
-    throw new Error(`Không đọc được file: ${msg}`);
+    throw new Error(`Cannot read file: ${msg}`);
   }
 
   // Nếu là file path (ảnh), xử lý bằng vision
@@ -1029,17 +1103,17 @@ async function processSingleFile(
 
       console.warn(
         isCreditExhausted
-          ? `[AI Import] Claude hết credit cho ${originalname}: ${claudeMsg}`
-          : `[AI Import] Claude text processing thất bại cho ${originalname}: ${claudeMsg}`
+          ? `[AI Import] Claude out of credit for ${originalname}: ${claudeMsg}`
+          : `[AI Import] Claude text processing failed for ${originalname}: ${claudeMsg}`
       );
 
       if (geminiKey) {
-        console.log(`[AI Import] Fallback sang Gemini cho ${originalname}`);
+        console.log(`[AI Import] Falling back to Gemini for ${originalname}`);
         try {
           return await processTextWithGemini(extractedText, originalname, geminiKey);
         } catch (geminiErr: unknown) {
           const geminiMsg = geminiErr instanceof Error ? geminiErr.message : String(geminiErr);
-          console.error(`[AI Import] Gemini cũng thất bại cho ${originalname}: ${geminiMsg}`);
+          console.error(`[AI Import] Gemini also failed for ${originalname}: ${geminiMsg}`);
           throw claudeErr;
         }
       }
@@ -1047,9 +1121,9 @@ async function processSingleFile(
     }
   }
 
-  // Không có Claude → dùng Gemini trực tiếp
+  // No Claude available -> use Gemini directly
   if (!geminiKey) {
-    throw new Error('Không có AI provider nào được cấu hình (ANTHROPIC_API_KEY hoặc GEMINI_API_KEY)');
+    throw new Error('No AI provider configured (ANTHROPIC_API_KEY or GEMINI_API_KEY)');
   }
   return await processTextWithGemini(extractedText, originalname, geminiKey);
 }
@@ -1064,8 +1138,8 @@ async function processImageWithGemini(
   if (shouldGeminiBeSkipped()) {
     const resetIn = Math.ceil((dailyResetTime.getTime() - Date.now()) / 1000);
     throw new Error(
-      `[RateLimit] Gemini quota đã hết (${MAX_GEMINI_REQUESTS_PER_DAY}/${MAX_GEMINI_REQUESTS_PER_DAY}). ` +
-      `Reset tự động trong ${Math.floor(resetIn / 3600)}h ${Math.floor((resetIn % 3600) / 60)}m.`
+      `[RateLimit] Gemini quota exhausted (${MAX_GEMINI_REQUESTS_PER_DAY}/${MAX_GEMINI_REQUESTS_PER_DAY}). ` +
+      `Auto reset in ${Math.floor(resetIn / 3600)}h ${Math.floor((resetIn % 3600) / 60)}m.`
     );
   }
 
@@ -1097,7 +1171,7 @@ Map A→0, B→1, C→2, D→3. Return ONLY JSON, no explanation.`;
     if (Array.isArray(parsed)) {
       const validQuestions = parsed.filter((q: any) => q.question && q.question.trim().length > 0);
       if (validQuestions.length === 0 && parsed.length > 0) {
-        console.warn(`[AI Import] File ${originalname}: AI trả về ${parsed.length} câu hỏi nhưng đều rỗng`);
+        console.warn(`[AI Import] File ${originalname}: AI returned ${parsed.length} questions but all are empty`);
       }
       return validQuestions.map((q: any) => ({
         question: q.question || '',
@@ -1119,7 +1193,7 @@ Map A→0, B→1, C→2, D→3. Return ONLY JSON, no explanation.`;
       return questionsFromText;
     }
   }
-  console.warn(`[AI Import] Không trích xuất được câu hỏi từ ${originalname}`);
+  console.warn(`[AI Import] Cannot extract questions from ${originalname}`);
   return [];
 }
 
@@ -1158,7 +1232,7 @@ async function processTextWithGemini(
       }));
     }
   } catch {
-    throw new Error('AI không phân tích được câu hỏi từ file này. Hãy thử file khác hoặc nhập câu hỏi thủ công.');
+    throw new Error('AI could not parse questions from this file. Try a different file or enter questions manually.');
   }
   return [];
 }
@@ -1169,7 +1243,7 @@ router.use((err: unknown, _req: express.Request, res: express.Response, next: ex
   if (anyErr?.name === 'MulterError' || anyErr?.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({
       success: false,
-      message: 'File quá lớn (tối đa 20MB).',
+      message: 'File too large (max 20MB).',
     });
   }
   if (typeof anyErr?.message === 'string' && anyErr.message.includes('Only PDF')) {
