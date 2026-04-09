@@ -63,8 +63,9 @@ function hasConfiguredAiProvider(): boolean {
 const AI_KEYS_MISSING_MSG =
   'Chưa cấu hình AI trên server. Thêm biến ANTHROPIC_API_KEY (khuyến nghị) hoặc GEMINI_API_KEY trên hosting (ví dụ Render).';
 
-/** Số ảnh gửi trong 1 request — giữ Gemini free-tier (60 req/ngày) không bị quá quota */
-const IMAGES_PER_BATCH = 5;
+/** Số ảnh gửi trong 1 request — Gemini free-tier giới hạn 20 req/ngày
+ * 50 ảnh / 10 = 5 requests → còn dư 15 requests/ngày */
+const IMAGES_PER_BATCH = 10;
 
 /** Retry tự động khi Claude trả 529 (model overloaded) hoặc 429 (rate limit). */
 const MAX_RETRIES_CLAUDE = 3;
@@ -708,20 +709,14 @@ router.post('/import', aiUploadMiddleware, async (req: AuthRequest, res) => {
     const filePath = req.file.path;
     const { mimetype, originalname } = req.file;
     const geminiKey = getGeminiKeyFromEnv() ?? '';
-    console.log(
-      '[AI Import] file:',
-      originalname,
-      'mime:',
-      mimetype,
-      'ANTHROPIC:',
-      !!ANTHROPIC_API_KEY,
-      'GEMINI:',
-      !!geminiKey
-    );
+    console.log('[AI Import] file:', originalname, 'mime:', mimetype, 'GEMINI:', !!geminiKey);
 
-    if (!hasConfiguredAiProvider()) {
+    if (!geminiKey) {
       await fs.unlink(filePath).catch(() => {});
-      return res.status(500).json({ success: false, message: AI_KEYS_MISSING_MSG });
+      return res.status(500).json({
+        success: false,
+        message: 'Chưa cấu hình GEMINI_API_KEY trên server (Render).'
+      });
     }
 
     const questions = await processSingleFile(filePath, mimetype, originalname, geminiKey);
@@ -765,8 +760,8 @@ router.post('/import', aiUploadMiddleware, async (req: AuthRequest, res) => {
   }
 });
 
-/** Xử lý nhiều ảnh — gộp mỗi N ảnh vào 1 request để tiết kiệm quota API
- * Ưu tiên Claude Vision, fallback Gemini */
+/** Xử lý nhiều ảnh — gộp mỗi N ảnh vào 1 request Gemini để tiết kiệm quota
+ * Không dùng Claude vì free-tier quota quá thấp cho batch */
 router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, res) => {
   try {
     if (!req.user || req.user.role !== 'teacher') {
@@ -778,20 +773,21 @@ router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, r
     }
 
     const geminiKey = getGeminiKeyFromEnv() ?? '';
-    if (!hasConfiguredAiProvider()) {
+    if (!geminiKey) {
       await Promise.all(files.map((f) => fs.unlink(f.path).catch(() => {})));
-      return res.status(500).json({ success: false, message: AI_KEYS_MISSING_MSG });
+      return res.status(500).json({
+        success: false,
+        message: 'Chưa cấu hình GEMINI_API_KEY trên server (Render).'
+      });
     }
 
     console.log(
-      `[AI Import Batch] ${files.length} files (ANTHROPIC: ${!!ANTHROPIC_API_KEY}, GEMINI: ${!!geminiKey}), ` +
-      `batch size: ${IMAGES_PER_BATCH}`
+      `[AI Import Batch] ${files.length} files (GEMINI: true), batch size: ${IMAGES_PER_BATCH}`
     );
-
     const allQuestions: GeminiQuestion[] = [];
     const errors: { file: string; message: string }[] = [];
 
-    // Tách riêng ảnh vs non-image (PDF/DOCX) — ảnh gộp batch, non-image xử lý riêng
+    // Tách riêng ảnh vs non-image (PDF/DOCX)
     const imageFiles: Express.Multer.File[] = [];
     const nonImageFiles: Express.Multer.File[] = [];
     for (const file of files) {
@@ -803,110 +799,41 @@ router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, r
       }
     }
 
-    // ── Xử lý ảnh theo batch gộp ──
-    if (imageFiles.length > 0) {
-      if (ANTHROPIC_API_KEY) {
-        // Gộp ảnh, mỗi batch gọi Claude 1 lần
-        for (let i = 0; i < imageFiles.length; i += IMAGES_PER_BATCH) {
-          const batch = imageFiles.slice(i, i + IMAGES_PER_BATCH);
-          const batchIdx = Math.floor(i / IMAGES_PER_BATCH) + 1;
-          const batchNames = batch.map(f => f.originalname).join(', ');
+    // ── Xử lý ảnh: gộp N ảnh/request ──
+    for (let i = 0; i < imageFiles.length; i += IMAGES_PER_BATCH) {
+      const batch = imageFiles.slice(i, i + IMAGES_PER_BATCH);
+      const batchIdx = Math.floor(i / IMAGES_PER_BATCH) + 1;
 
-          const images = await Promise.all(batch.map(async f => ({
-            imageData: await fs.readFile(f.path),
-            originalname: f.originalname,
-            mimeStr: (['image/jpeg', 'image/png', 'image/webp'].includes(f.mimetype)
-              ? f.mimetype
-              : `image/${path.extname(f.originalname).slice(1)}`) as string,
-          })));
+      const images = await Promise.all(batch.map(async f => ({
+        imageData: await fs.readFile(f.path),
+        originalname: f.originalname,
+        mimeStr: (['image/jpeg', 'image/png', 'image/webp'].includes(f.mimetype)
+          ? f.mimetype
+          : `image/${path.extname(f.originalname).slice(1)}`) as string,
+      })));
 
-          try {
-            const results = await processBatchImagesWithClaude(images, batchIdx);
-            for (const { originalname, questions } of results) {
-              const file = batch.find(f => f.originalname === originalname)!;
-              if (questions.length > 0) {
-                allQuestions.push(...questions);
-                console.log(`[AI Import Batch] ${originalname}: ${questions.length} questions`);
-              } else {
-                errors.push({ file: originalname, message: 'No questions extracted from image' });
-              }
-              await fs.unlink(file.path).catch(() => {});
-            }
-          } catch (batchErr: unknown) {
-            const batchMsg = batchErr instanceof Error ? batchErr.message : String(batchErr);
-            const isCreditExhausted =
-              batchMsg.includes('400') ||
-              /credit balance|too low|plans & billing|invalid_request_error/i.test(batchMsg);
-
-            if (isCreditExhausted && geminiKey) {
-              console.warn(`[AI Import Batch] Claude hết credit, fallback Gemini cho batch ${batchIdx}`);
-              for (let j = 0; j < batch.length; j++) {
-                const file = batch[j];
-                const img = images[j];
-                try {
-                  const results = await processBatchImagesWithGemini([img], batchIdx * 100 + j, geminiKey);
-                  if (results[0].questions.length > 0) {
-                    allQuestions.push(...results[0].questions);
-                    console.log(`[AI Import Batch] ${file.originalname} (Gemini fallback): ${results[0].questions.length} questions`);
-                  } else {
-                    errors.push({ file: file.originalname, message: 'No questions extracted from image (Gemini)' });
-                  }
-                } catch (gemErr: unknown) {
-                  const gErrMsg = gemErr instanceof Error ? gemErr.message : String(gemErr);
-                  errors.push({ file: file.originalname, message: `[Gemini fallback failed] ${gErrMsg}` });
-                  console.error(`[AI Import Batch] Gemini fallback failed for ${file.originalname}:`, gErrMsg);
-                }
-                await fs.unlink(file.path).catch(() => {});
-              }
-            } else {
-              // Lỗi khác: đánh dấu tất cả ảnh trong batch là lỗi
-              console.error(`[AI Import Batch] Claude batch ${batchIdx} failed:`, batchMsg);
-              for (const file of batch) {
-                errors.push({ file: file.originalname, message: `[Claude batch error] ${batchMsg}` });
-                await fs.unlink(file.path).catch(() => {});
-              }
-            }
+      try {
+        const results = await processBatchImagesWithGemini(images, batchIdx, geminiKey);
+        for (const { originalname, questions } of results) {
+          if (questions.length > 0) {
+            allQuestions.push(...questions);
+            console.log(`[AI Import Batch] ${originalname}: ${questions.length} questions`);
+          } else {
+            errors.push({ file: originalname, message: 'No questions extracted from image' });
           }
         }
-      } else if (geminiKey) {
-        // Không có Claude — gộp ảnh gọi Gemini batch
-        for (let i = 0; i < imageFiles.length; i += IMAGES_PER_BATCH) {
-          const batch = imageFiles.slice(i, i + IMAGES_PER_BATCH);
-          const batchIdx = Math.floor(i / IMAGES_PER_BATCH) + 1;
-
-          const images = await Promise.all(batch.map(async f => ({
-            imageData: await fs.readFile(f.path),
-            originalname: f.originalname,
-            mimeStr: (['image/jpeg', 'image/png', 'image/webp'].includes(f.mimetype)
-              ? f.mimetype
-              : `image/${path.extname(f.originalname).slice(1)}`) as string,
-          })));
-
-          try {
-            const results = await processBatchImagesWithGemini(images, batchIdx, geminiKey);
-            for (const { originalname, questions } of results) {
-              const file = batch.find(f => f.originalname === originalname)!;
-              if (questions.length > 0) {
-                allQuestions.push(...questions);
-                console.log(`[AI Import Batch] ${originalname} (Gemini): ${questions.length} questions`);
-              } else {
-                errors.push({ file: originalname, message: 'No questions extracted from image' });
-              }
-              await fs.unlink(file.path).catch(() => {});
-            }
-          } catch (batchErr: unknown) {
-            const batchMsg = batchErr instanceof Error ? batchErr.message : String(batchErr);
-            console.error(`[AI Import Batch] Gemini batch ${batchIdx} failed:`, batchMsg);
-            for (const file of batch) {
-              errors.push({ file: file.originalname, message: `[Gemini batch error] ${batchMsg}` });
-              await fs.unlink(file.path).catch(() => {});
-            }
-          }
+      } catch (batchErr: unknown) {
+        const batchMsg = batchErr instanceof Error ? batchErr.message : String(batchErr);
+        console.error(`[AI Import Batch] Gemini batch ${batchIdx} failed:`, batchMsg);
+        for (const file of batch) {
+          errors.push({ file: file.originalname, message: `[Gemini batch error] ${batchMsg}` });
         }
+      } finally {
+        await Promise.all(batch.map(f => fs.unlink(f.path).catch(() => {})));
       }
     }
 
-    // ── Xử lý non-image (PDF/DOCX) từng file riêng ──
+    // ── Non-image (PDF/DOCX): Gemini Flash text ──
     for (const file of nonImageFiles) {
       try {
         const qs = await processSingleFile(file.path, file.mimetype, file.originalname, geminiKey);
@@ -914,9 +841,8 @@ router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, r
         console.log(`[AI Import Batch] ${file.originalname}: ${qs.length} questions`);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        const errorInfo = classifyError(msg);
-        errors.push({ file: file.originalname, message: `[${errorInfo.category}] ${msg}` });
-        console.error(`[AI Import Batch] ${file.originalname} failed (${errorInfo.category}):`, msg);
+        errors.push({ file: file.originalname, message: msg });
+        console.error(`[AI Import Batch] ${file.originalname} failed:`, msg);
       } finally {
         await fs.unlink(file.path).catch(() => {});
       }
