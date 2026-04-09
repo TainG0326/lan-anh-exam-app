@@ -24,11 +24,13 @@ const DRAG_ACTIVE_CLASS =
   'border-primary bg-primary/[0.06] ring-4 ring-primary/10 scale-[1.01]';
 const DRAG_IDLE_CLASS = 'border-dashed border-[#648777]/35 bg-[#648777]/[0.04]';
 
-const IMAGE_EXT = /\.(jpg|jpeg|png|webp)$/i;
+const IMAGE_EXT = /\.(jpg|jpeg|png|webp|pdf|docx)$/i;
 const MAX_FILES = 50;
 
-function isImageFile(f: File): boolean {
-  return IMAGE_EXT.test(f.name) || /^image\/(jpeg|png|webp)$/i.test(f.type);
+function isAcceptedFile(f: File): boolean {
+  return IMAGE_EXT.test(f.name) || /^image\/(jpeg|png|webp)$/i.test(f.type) ||
+    f.type === 'application/pdf' ||
+    f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 }
 
 /** Đọc 1 file entry (Chrome khi kéo file/thư mục). */
@@ -158,9 +160,9 @@ export default function AIMagicImportModal({
     }
 
     const applyMerge = (incoming: File[]) => {
-      const imageFiles = incoming.filter(isImageFile);
-      if (imageFiles.length === 0) return;
-      setSelectedFiles((prev) => mergeUniqueFiles(prev, imageFiles).slice(0, MAX_FILES));
+      const acceptedFiles = incoming.filter(isAcceptedFile);
+      if (acceptedFiles.length === 0) return;
+      setSelectedFiles((prev) => mergeUniqueFiles(prev, acceptedFiles).slice(0, MAX_FILES));
     };
 
     if (entries.length > 0) {
@@ -178,9 +180,9 @@ export default function AIMagicImportModal({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const imageFiles = files.filter(isImageFile);
-    if (imageFiles.length > 0) {
-      setSelectedFiles((prev) => mergeUniqueFiles(prev, imageFiles).slice(0, MAX_FILES));
+    const acceptedFiles = files.filter(isAcceptedFile);
+    if (acceptedFiles.length > 0) {
+      setSelectedFiles((prev) => mergeUniqueFiles(prev, acceptedFiles).slice(0, MAX_FILES));
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -195,9 +197,9 @@ export default function AIMagicImportModal({
 
   const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const imageFiles = files.filter(isImageFile);
-    if (imageFiles.length > 0) {
-      setSelectedFiles((prev) => mergeUniqueFiles(prev, imageFiles).slice(0, MAX_FILES));
+    const acceptedFiles = files.filter(isAcceptedFile);
+    if (acceptedFiles.length > 0) {
+      setSelectedFiles((prev) => mergeUniqueFiles(prev, acceptedFiles).slice(0, MAX_FILES));
     }
     if (folderInputRef.current) folderInputRef.current.value = '';
   };
@@ -290,7 +292,7 @@ export default function AIMagicImportModal({
 
   if (!isOpen) return null;
 
-  const ACCEPTED = '.jpg,.jpeg,.png,.webp';
+  const ACCEPTED = '.jpg,.jpeg,.png,.webp,.pdf,.docx,.doc';
   const hasFiles = selectedFiles.length > 0;
   const totalSize = selectedFiles.reduce((acc, f) => acc + f.size, 0);
   const totalSizeLabel = totalSize >= 1024 * 1024
@@ -299,7 +301,7 @@ export default function AIMagicImportModal({
   const isOverLimit = selectedFiles.length > 30;
 
   const processingLabel = selectedFiles.length > 1
-    ? `Processing ${selectedFiles.length} images — extracting questions`
+    ? `Processing ${selectedFiles.length} files — extracting questions`
     : `Processing "${selectedFiles[0]?.name || ''}" — extracting questions`;
 
   return (
@@ -382,7 +384,7 @@ export default function AIMagicImportModal({
                       <FileImage className="h-7 w-7 text-primary" />
                     </div>
                     <p className="mb-1 text-base font-semibold text-text-primary">
-                      {selectedFiles.length} image{selectedFiles.length !== 1 ? 's' : ''} selected
+                      {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
                     </p>
                     <p className="text-sm text-text-secondary">{totalSizeLabel}</p>
                     <p className="mt-2 text-xs text-text-muted">Click or drag to add more</p>
@@ -393,10 +395,10 @@ export default function AIMagicImportModal({
                       <ImagePlus className="h-7 w-7 text-primary" />
                     </div>
                     <p className="mb-1 text-base font-semibold text-text-primary">
-                      Drop images here, or <span className="text-primary underline">browse</span>
+                      Drop images, PDF, or Word files here, or <span className="text-primary underline">browse</span>
                     </p>
                     <p className="text-sm text-text-secondary">
-                      JPG, PNG, WEBP · {selectedFiles.length === 0 ? 'Max 50 images at once' : 'Add more images'}
+                      JPG, PNG, WEBP, PDF, DOCX · {selectedFiles.length === 0 ? 'Max 50 files at once' : 'Add more files'}
                     </p>
                   </>
                 )}
@@ -473,8 +475,8 @@ export default function AIMagicImportModal({
                 <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-700">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
-                    <strong>{selectedFiles.length} images selected</strong> — this may take several minutes and could timeout.
-                    Consider splitting into batches of ~30 images for best results.
+                    <strong>{selectedFiles.length} files selected</strong> — this may take several minutes and could timeout.
+                    Consider splitting into batches of ~30 files for best results.
                   </span>
                 </div>
               )}
@@ -532,7 +534,7 @@ export default function AIMagicImportModal({
                   className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#a78bfa] via-[#f472b6] to-[#fbbf24] px-6 py-3 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
                   <Wand2 className="h-4 w-4" />
-                  {selectedFiles.length > 1 ? `Analyze ${selectedFiles.length} images with AI` : 'Analyze with AI'}
+                  {selectedFiles.length > 1 ? `Analyze ${selectedFiles.length} files with AI` : 'Analyze with AI'}
                 </button>
               </div>
             </>
@@ -557,7 +559,7 @@ export default function AIMagicImportModal({
               </p>
               <div className="mt-6 flex items-center gap-2 text-sm text-text-muted">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Claude Vision · OCR
+                AI Processing
               </div>
             </div>
           )}
