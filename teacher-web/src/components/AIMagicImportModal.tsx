@@ -231,7 +231,7 @@ export default function AIMagicImportModal({
         // Check if server returned errors in the response
         if (res.errors && res.errors.length > 0) {
           setFileErrors(res.errors.map((e) => ({ fileName: e.file, message: e.message })));
-          setError(`Đã xử lý ${res.filesProcessed || selectedFiles.length} file. ${res.filesWithErrors || 0} file thất bại. Xem chi tiết bên dưới.`);
+          setError(`Processed ${res.filesProcessed || selectedFiles.length} files. ${res.filesWithErrors || 0} files failed. See details below.`);
         } else {
           setError(res.message || 'Không trích xuất được câu hỏi nào.');
         }
@@ -242,7 +242,7 @@ export default function AIMagicImportModal({
       const base =
         ax?.response?.data?.message ||
         ax?.message ||
-        'Import thất bại. Vui lòng thử lại.';
+        'Import failed. Please try again.';
       // Capture errors from error response if available
       if (ax?.response?.data?.errors) {
         setFileErrors(ax.response.data.errors.map((e: { file: string; message: string }) => ({ fileName: e.file, message: e.message })));
@@ -504,10 +504,10 @@ export default function AIMagicImportModal({
                         onClick={() => setShowErrors(!showErrors)}
                         className="w-full flex items-center justify-between px-4 py-2 text-left bg-red-50 hover:bg-red-100 transition-colors"
                       >
-                        <span className="text-xs font-semibold text-red-700">
-                          Xem chi tiet {fileErrors.length} file that bai
-                        </span>
-                        <span className="text-xs text-red-500">{showErrors ? 'An' : 'Hien'} thi</span>
+                    <span className="text-xs font-semibold text-red-700">
+                      View details of {fileErrors.length} failed files
+                    </span>
+                    <span className="text-xs text-red-500">{showErrors ? 'Hide' : 'Show'}</span>
                       </button>
                       {showErrors && (
                         <div className="px-3 py-2 max-h-48 overflow-y-auto space-y-1">

@@ -18,31 +18,14 @@ export interface AIImportResponse {
   errors?: { file: string; message: string }[];
 }
 
-function aiImportUrl(token: string | null): string {
+function aiImportUrl(): string {
   const base = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
-  let url = `${base}/ai/import`;
-  if (token) {
-    url += `${url.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(token)}`;
-  }
-  return url;
+  return `${base}/ai/import`;
 }
 
-function aiImportBatchUrl(token: string | null): string {
+function aiImportBatchUrl(): string {
   const base = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
-  let url = `${base}/ai/import-batch`;
-  if (token) {
-    url += `${url.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(token)}`;
-  }
-  return url;
-}
-
-/** Header auth + query access_token — một số môi trường tước Authorization trên multipart. */
-function authHeadersForUpload(token: string | null): HeadersInit {
-  if (!token) return {};
-  return {
-    Authorization: `Bearer ${token}`,
-    'X-Access-Token': token,
-  };
+  return `${base}/ai/import-batch`;
 }
 
 /** Gợi ý làm nóng server: bỏ hậu tố /api rồi nối /health */
@@ -54,7 +37,7 @@ function apiHealthUrl(): string | null {
   return origin ? `${origin}/health` : null;
 }
 
-/** Render cold start + AI (ảnh/PDF) có thể > 30s; không có timeout thì UI xoay vô hạn */
+/** Render cold start + Gemini (ảnh/PDF) có thể > 30s; không có timeout thì UI xoay vô hạn */
 const AI_IMPORT_TIMEOUT_MS = Number(import.meta.env.VITE_AI_IMPORT_TIMEOUT_MS) || 180000;
 
 export const aiImportService = {
@@ -63,7 +46,10 @@ export const aiImportService = {
     formData.append('file', file);
 
     const token = localStorage.getItem('token');
-    const headers: HeadersInit = authHeadersForUpload(token);
+    const headers: HeadersInit = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), AI_IMPORT_TIMEOUT_MS);
@@ -71,7 +57,7 @@ export const aiImportService = {
     let response: Response;
     try {
       // fetch + FormData: không set Content-Type để trình duyệt tự gắn boundary (multipart).
-      response = await fetch(aiImportUrl(token), {
+      response = await fetch(aiImportUrl(), {
         method: 'POST',
         body: formData,
         headers,
@@ -85,10 +71,10 @@ export const aiImportService = {
         const health = apiHealthUrl();
         const warmHint = health
           ? `Hoặc mở trước ${health} để “làm nóng” server, rồi import lại.`
-          : 'Or open the API /health endpoint first to warm up the server, then try again.';
+          : 'Hoặc mở trước endpoint /health của API để làm nóng server, rồi import lại.';
         throw new Error(
-          `Timeout after ${AI_IMPORT_TIMEOUT_MS / 1000}s. ` +
-            'The server (e.g. Render) may be in cold start or AI processing is slow — try again in 1-2 minutes. ' +
+          `Hết thời gian chờ (${AI_IMPORT_TIMEOUT_MS / 1000}s). ` +
+            'Server (ví dụ Render) có thể đang cold start hoặc Gemini xử lý lâu — hãy thử lại sau 1–2 phút. ' +
             warmHint
         );
       }
@@ -108,7 +94,7 @@ export const aiImportService = {
     return data;
   },
 
-  /** Gửi nhiều ảnh cùng lúc, mỗi ảnh xử lý trên server (Claude Vision, fallback Gemini), gộp kết quả */
+  /** Gửi nhiều ảnh cùng lúc, mỗi ảnh xử lý bằng Gemini Vision, gộp kết quả */
   importFiles: async (files: File[]): Promise<AIImportResponse> => {
     if (files.length === 0) {
       throw new Error('No files selected');
@@ -123,7 +109,10 @@ export const aiImportService = {
     });
 
     const token = localStorage.getItem('token');
-    const headers: HeadersInit = authHeadersForUpload(token);
+    const headers: HeadersInit = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
 
     const controller = new AbortController();
     const batchTimeout = AI_IMPORT_TIMEOUT_MS * Math.ceil(files.length / 5);
@@ -131,7 +120,7 @@ export const aiImportService = {
 
     let response: Response;
     try {
-      response = await fetch(aiImportBatchUrl(token), {
+      response = await fetch(aiImportBatchUrl(), {
         method: 'POST',
         body: formData,
         headers,
@@ -144,11 +133,11 @@ export const aiImportService = {
       if (name === 'AbortError') {
         const health = apiHealthUrl();
         const warmHint = health
-          ? `Or open ${health} first to warm up the server, then try importing again.`
-          : 'Or open the API /health endpoint first to warm up the server, then try again.';
+          ? `Hoặc mở trước ${health} để "làm nóng" server, rồi import lại.`
+          : 'Hoặc mở trước endpoint /health của API để làm nóng server, rồi import lại.';
         throw new Error(
-          `Timeout. Processing ${files.length} images — may take up to ${Math.round(batchTimeout / 60000)} minutes. ` +
-            `Please wait or try fewer images. ${warmHint}`
+          `Hết thời gian chờ. Đang xử lý ${files.length} ảnh — có thể mất đến ${Math.round(batchTimeout / 60000)} phút. ` +
+            `Vui lòng đợi hoặc thử ít ảnh hơn. ${warmHint}`
         );
       }
       throw e;

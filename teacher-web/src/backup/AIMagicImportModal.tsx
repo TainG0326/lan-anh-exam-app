@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { X, Sparkles, Upload, Loader2, CheckCircle2, Trash2, Edit3, AlertCircle, Wand2 } from 'lucide-react';
+import { X, Sparkles, Loader2, CheckCircle2, Trash2, Edit3, AlertCircle, Wand2, FileImage, ImagePlus } from 'lucide-react';
 import { aiImportService, AIQuestion } from '../services/aiImportService';
 
 type ImportStep = 'upload' | 'processing' | 'review' | 'done';
@@ -32,22 +32,26 @@ export default function AIMagicImportModal({
 }: AIMagicImportModalProps) {
   const [step, setStep] = useState<ImportStep>('upload');
   const [dragOver, setDragOver] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [extractedQuestions, setExtractedQuestions] = useState<AIQuestion[]>([]);
   const [editIdx, setEditIdx] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<AIQuestion | null>(null);
   const [error, setError] = useState('');
+  const [batchInfo, setBatchInfo] = useState<{ filesProcessed?: number; filesWithErrors?: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
     setStep('upload');
-    setSelectedFile(null);
+    setSelectedFiles([]);
     setExtractedQuestions([]);
     setEditIdx(null);
     setEditForm(null);
     setError('');
     setDragOver(false);
+    setBatchInfo(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    if (folderInputRef.current) folderInputRef.current.value = '';
   };
 
   const handleClose = () => {
@@ -58,23 +62,65 @@ export default function AIMagicImportModal({
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) setSelectedFile(file);
+    const files = Array.from(e.dataTransfer.files);
+    const imageFiles = files.filter((f) =>
+      /\.(jpg|jpeg|png|webp)$/i.test(f.name)
+    );
+    if (imageFiles.length > 0) {
+      setSelectedFiles((prev) => [...prev, ...imageFiles]);
+    }
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) setSelectedFile(file);
+    const files = Array.from(e.target.files || []);
+    const imageFiles = files.filter((f) =>
+      /\.(jpg|jpeg|png|webp)$/i.test(f.name)
+    );
+    if (imageFiles.length > 0) {
+      setSelectedFiles((prev) => [...prev, ...imageFiles]);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const clearAllFiles = () => {
+    setSelectedFiles([]);
+  };
+
+  const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const imageFiles = files.filter((f) =>
+      /\.(jpg|jpeg|png|webp)$/i.test(f.name)
+    );
+    if (imageFiles.length > 0) {
+      setSelectedFiles((prev) => {
+        const existingNames = new Set(prev.map((f) => f.name + f.size));
+        const newFiles = imageFiles.filter((f) => !existingNames.has(f.name + f.size));
+        return [...prev, ...newFiles];
+      });
+    }
+    if (folderInputRef.current) folderInputRef.current.value = '';
+  };
+
+  const handleSelectFolder = () => {
+    folderInputRef.current?.click();
   };
 
   const handleProcess = async () => {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
     setStep('processing');
     setError('');
     try {
-      const res = await aiImportService.importFile(selectedFile);
+      const res = await aiImportService.importFiles(selectedFiles);
       if (res.success && res.questions.length > 0) {
         setExtractedQuestions(res.questions);
+        setBatchInfo({
+          filesProcessed: res.filesProcessed,
+          filesWithErrors: res.filesWithErrors,
+        });
         setStep('review');
       } else {
         setError(res.message || 'No questions could be extracted.');
@@ -90,7 +136,7 @@ export default function AIMagicImportModal({
         /network|fetch|failed to load|access denied|ERR_/i.test(String(base));
       setError(
         isNetwork
-          ? `${base} Thử tắt extension (ad block, FB AIO…), dùng cửa sổ ẩn danh, hoặc kiểm tra VPN/firewall.`
+          ? `${base} Check VPN/firewall or use incognito window.`
           : base
       );
       setStep('upload');
@@ -129,11 +175,17 @@ export default function AIMagicImportModal({
 
   if (!isOpen) return null;
 
-  const ACCEPTED = '.pdf,.docx,.jpg,.jpeg,.png';
-  const fileName = selectedFile?.name || '';
-  const fileSize = selectedFile
-    ? `${(selectedFile.size / 1024 / 1024).toFixed(1)} MB`
-    : '';
+  const ACCEPTED = '.jpg,.jpeg,.png,.webp';
+  const hasFiles = selectedFiles.length > 0;
+  const totalSize = selectedFiles.reduce((acc, f) => acc + f.size, 0);
+  const totalSizeLabel = totalSize >= 1024 * 1024
+    ? `${(totalSize / 1024 / 1024).toFixed(1)} MB`
+    : `${(totalSize / 1024).toFixed(0)} KB`;
+  const isOverLimit = selectedFiles.length > 30;
+
+  const processingLabel = selectedFiles.length > 1
+    ? `Processing ${selectedFiles.length} images — extracting questions`
+    : `Processing "${selectedFiles[0]?.name || ''}" — extracting questions`;
 
   return (
     <div
@@ -155,7 +207,7 @@ export default function AIMagicImportModal({
                 AI Smart Import
               </h2>
               <p className="text-sm text-text-secondary">
-                Extract questions from PDF, DOCX, JPG, or PNG
+                Extract questions from multiple images
               </p>
             </div>
           </div>
@@ -183,7 +235,7 @@ export default function AIMagicImportModal({
                 onDragLeave={() => setDragOver(false)}
                 onDrop={onDrop}
                 className={`
-                  relative flex flex-col items-center justify-center rounded-2xl border-2 p-10 cursor-pointer
+                  relative flex flex-col items-center justify-center rounded-2xl border-2 p-8 cursor-pointer
                   transition-all duration-200
                   ${dragOver ? DRAG_ACTIVE_CLASS : DRAG_IDLE_CLASS}
                   hover:border-primary/50 hover:bg-primary/[0.05]
@@ -193,33 +245,133 @@ export default function AIMagicImportModal({
                   ref={fileInputRef}
                   type="file"
                   accept={ACCEPTED}
+                  multiple
                   onChange={handleFileChange}
                   className="hidden"
                 />
+                <input
+                  ref={folderInputRef}
+                  type="file"
+                  accept={ACCEPTED}
+                  /* @ts-ignore */
+                  webkitdirectory="true"
+                  onChange={handleFolderChange}
+                  className="hidden"
+                />
 
-                {selectedFile ? (
+                {hasFiles ? (
                   <>
-                    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15">
-                      <CheckCircle2 className="h-7 w-7 text-primary" />
+                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15">
+                      <FileImage className="h-7 w-7 text-primary" />
                     </div>
-                    <p className="mb-1 text-base font-semibold text-text-primary">{fileName}</p>
-                    <p className="text-sm text-text-secondary">{fileSize}</p>
-                    <p className="mt-3 text-xs text-text-muted">Click to change file</p>
+                    <p className="mb-1 text-base font-semibold text-text-primary">
+                      {selectedFiles.length} image{selectedFiles.length !== 1 ? 's' : ''} selected
+                    </p>
+                    <p className="text-sm text-text-secondary">{totalSizeLabel}</p>
+                    <p className="mt-2 text-xs text-text-muted">Click or drag to add more</p>
                   </>
                 ) : (
                   <>
                     <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#648777]/10">
-                      <Upload className="h-7 w-7 text-primary" />
+                      <ImagePlus className="h-7 w-7 text-primary" />
                     </div>
                     <p className="mb-1 text-base font-semibold text-text-primary">
-                      Drop your file here, or <span className="text-primary underline">browse</span>
+                      Drop images here, or <span className="text-primary underline">browse</span>
                     </p>
                     <p className="text-sm text-text-secondary">
-                      PDF, DOCX, JPG, PNG supported · Max 20 MB
+                      JPG, PNG, WEBP · {selectedFiles.length === 0 ? 'Max 50 images at once' : 'Add more images'}
                     </p>
                   </>
                 )}
               </div>
+
+              {/* Folder + file buttons */}
+              <div className="flex gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleSelectFolder}
+                  className="flex items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-text-secondary hover:bg-slate-50 hover:border-primary hover:text-primary transition-colors"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
+                  Select Folder
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-text-secondary hover:bg-slate-50 hover:border-primary hover:text-primary transition-colors"
+                >
+                  <FileImage className="h-4 w-4" />
+                  Select Files
+                </button>
+                {selectedFiles.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearAllFiles}
+                    className="flex items-center gap-2 rounded-xl border-2 border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-500 hover:bg-red-100 transition-colors"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Clear All
+                  </button>
+                )}
+              </div>
+
+              {/* Selected files list */}
+              {hasFiles && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2 max-h-40 overflow-y-auto">
+                  {selectedFiles.map((file, idx) => (
+                    <div key={idx} className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileImage className="h-4 w-4 shrink-0 text-text-muted" />
+                        <span className="text-sm text-text-primary truncate">{file.name}</span>
+                        <span className="text-xs text-text-muted shrink-0">
+                          ({(file.size / 1024).toFixed(0)} KB)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); removeFile(idx); }}
+                        className="rounded-lg p-1 text-text-muted hover:bg-red-50 hover:text-red-500 shrink-0"
+                        title="Remove"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); clearAllFiles(); }}
+                    className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600 font-medium mt-1"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Clear all
+                  </button>
+                </div>
+              )}
+
+              {/* Limit note */}
+              {isOverLimit && (
+                <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    <strong>{selectedFiles.length} images selected</strong> — this may take several minutes and could timeout.
+                    Consider splitting into batches of ~30 images for best results.
+                  </span>
+                </div>
+              )}
+
+              {!isOverLimit && (
+                <div className="flex items-start gap-2 rounded-xl border border-[#648777]/20 bg-[#648777]/[0.05] px-4 py-3 text-xs text-text-secondary">
+                  <svg className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>
+                    <strong>Recommended: max 30 images per import</strong> for best performance.
+                    Each image is processed by AI (Gemini) and may take 2–3 seconds.
+                  </span>
+                </div>
+              )}
 
               {error && (
                 <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -232,11 +384,11 @@ export default function AIMagicImportModal({
                 <button
                   type="button"
                   onClick={handleProcess}
-                  disabled={!selectedFile}
+                  disabled={!hasFiles}
                   className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#a78bfa] via-[#f472b6] to-[#fbbf24] px-6 py-3 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
                 >
                   <Wand2 className="h-4 w-4" />
-                  Analyze with AI
+                  {selectedFiles.length > 1 ? `Analyze ${selectedFiles.length} images with AI` : 'Analyze with AI'}
                 </button>
               </div>
             </>
@@ -245,7 +397,6 @@ export default function AIMagicImportModal({
           {/* ─── STEP 2: Processing ─── */}
           {step === 'processing' && (
             <div className="flex flex-col items-center justify-center py-16">
-              {/* Animated ring */}
               <div className="relative mb-6">
                 <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-[#a78bfa] via-[#f472b6] to-[#fbbf24] shadow-lg">
                   <Sparkles className="h-9 w-9 text-white" />
@@ -254,13 +405,15 @@ export default function AIMagicImportModal({
                   <div className="h-20 w-20 animate-ping rounded-full bg-gradient-to-br from-[#a78bfa] via-[#f472b6] to-[#fbbf24] opacity-20" />
                 </div>
               </div>
-              <h3 className="mb-2 text-xl font-bold text-text-primary">AI is analyzing…</h3>
-              <p className="max-w-sm text-center text-sm text-text-secondary">
-                {fileName ? `Processing "${fileName}" — extracting questions and answers` : 'Extracting questions and answers'}
+              <h3 className="mb-2 text-xl font-bold text-text-primary">AI is analyzing...</h3>
+              <p className="max-w-sm text-center text-sm text-text-secondary">{processingLabel}</p>
+              <p className="mt-3 max-w-md text-center text-xs text-text-muted leading-relaxed">
+                First time after server sleeps may take <strong>1–3 minutes</strong> (Render cold start + Gemini).
+                Please wait, do not close this window.
               </p>
               <div className="mt-6 flex items-center gap-2 text-sm text-text-muted">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Gemini 2.5 Flash · PDF / DOCX / OCR
+                Gemini 2.5 Flash · Vision OCR
               </div>
             </div>
           )}
@@ -271,23 +424,30 @@ export default function AIMagicImportModal({
               <div>
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className={sectionTitle}>Review Extracted Questions</h3>
-                  <span className="rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary">
-                    {extractedQuestions.length} questions
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {batchInfo && batchInfo.filesProcessed && (
+                      <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700">
+                        {batchInfo.filesProcessed} files
+                        {batchInfo.filesWithErrors ? ` (${batchInfo.filesWithErrors} errors)` : ''}
+                      </span>
+                    )}
+                    <span className="rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary">
+                      {extractedQuestions.length} questions
+                    </span>
+                  </div>
                 </div>
 
                 {extractedQuestions.length === 0 ? (
                   <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#648777]/35 bg-[#648777]/[0.04] py-10 text-center">
                     <AlertCircle className="mb-3 h-10 w-10 text-text-muted" />
                     <p className="text-sm font-medium text-text-primary">No questions extracted</p>
-                    <p className="mt-1 text-xs text-text-secondary">Try a clearer document or add questions manually</p>
+                    <p className="mt-1 text-xs text-text-secondary">Try clearer images or add questions manually</p>
                   </div>
                 ) : (
                   <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
                     {extractedQuestions.map((q, idx) => (
                       <div key={idx} className={cardClass}>
                         {editIdx === idx && editForm ? (
-                          /* Edit mode */
                           <div className="space-y-3">
                             <div>
                               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-text-secondary">
@@ -368,7 +528,6 @@ export default function AIMagicImportModal({
                             </div>
                           </div>
                         ) : (
-                          /* View mode */
                           <div className="flex items-start gap-3">
                             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#648777]/10 text-xs font-bold text-primary">
                               {idx + 1}
@@ -398,7 +557,7 @@ export default function AIMagicImportModal({
                               </div>
                               {q.explanation && (
                                 <p className="mb-2 rounded-lg border border-info/20 bg-info/5 px-3 py-2 text-xs text-info">
-                                  💡 {q.explanation}
+                                  {q.explanation}
                                 </p>
                               )}
                               <div className="flex items-center gap-2">
