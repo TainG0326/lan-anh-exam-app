@@ -749,7 +749,7 @@ async function raceTextAI(
     throw new Error(`[Race Text] All providers failed for ${originalname}: ${errors.join(' | ')}`);
   }
 
-  return race;
+  return race as unknown as RaceResult<GeminiQuestion[]>;
 }
 
 /**
@@ -847,7 +847,7 @@ async function raceImageBatchAI(
     throw new Error(`[Race Image Batch ${batchIndex}] All providers failed: ${errors.join(' | ')}`);
   }
 
-  return race;
+  return race as unknown as RaceResult<{ originalname: string; questions: GeminiQuestion[] }[]>;
 }
 
 /** Phân loại lỗi để hiển thị thông điệp phù hợp cho user */
