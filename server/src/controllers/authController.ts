@@ -12,6 +12,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Resend } from 'resend';
 import jwt from 'jsonwebtoken';
+import { authenticator } from 'otplib';
+import QRCode from 'qrcode';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -186,47 +188,57 @@ export const login = async (req: Request, res: Response) => {
 
     // Check if 2FA is enabled for this user
     if (user.two_factor_enabled && user.two_factor_verified) {
-      // 2FA is enabled - require OTP
+      // 2FA is enabled - require TOTP from authenticator app
       if (!otp) {
-        // First step: password validated, need OTP
+        // First step: password validated, need TOTP
         return res.json({
           success: false,
           requires2FA: true,
-          message: 'Vui lòng nhập mã xác thực 2FA đã được gửi đến email của bạn.',
+          message: 'Vui lòng nhập mã xác thực từ ứng dụng authenticator (Google Authenticator, Authy...).',
           tempToken: generateToken(user.id, '5m'), // Short-lived token for 2FA verification
         });
       }
 
-      // Second step: verify OTP
-      const otpResult = await OTPService.verifyOTP(email, otp, 'login');
-      if (!otpResult.valid) {
+      // Second step: verify TOTP
+      const isValid = authenticator.verify({ token: otp, secret: user.two_factor_secret || '' });
+      if (!isValid) {
         return res.status(401).json({
           success: false,
           requires2FA: true,
-          message: otpResult.error,
+          message: 'Mã xác thực không đúng. Vui lòng kiểm tra lại ứng dụng authenticator.',
         });
       }
-
-      // OTP verified, clear it
-      OTPService.clearOTP(email);
     }
 
     // Check if first login (2FA not set up yet but enabled for all)
     if (user.role === 'teacher' && process.env.REQUIRE_2FA === 'true' && !user.two_factor_enabled) {
-      // Generate and send OTP for first-time setup
-      const otp = await OTPService.createLoginOTP(user.id, email);
-      await sendOTPEmail(email, otp, 'login');
+      // Generate TOTP secret for first-time setup
+      const secret = authenticator.generateSecret();
+      const otpauthUrl = authenticator.keyuri(user.email, 'Lan Anh English', secret);
+
+      // Generate QR code
+      let qrCodeUrl = '';
+      try {
+        qrCodeUrl = await QRCode.toDataURL(otpauthUrl);
+      } catch (err) {
+        console.error('Failed to generate QR code:', err);
+      }
+
+      // Store temp secret in DB (pending activation until verified)
+      await UserDB.update(user.id, { two_factor_secret: secret });
 
       // Include isSetup flag in tempToken so verifyLoginOTP knows to enable 2FA
       const tempTokenPayload = { id: user.id, isSetup: true };
-      const tempToken = jwt.sign(tempTokenPayload, process.env.JWT_SECRET || 'secret', { expiresIn: '5m' });
+      const tempToken = jwt.sign(tempTokenPayload, process.env.JWT_SECRET || 'secret', { expiresIn: '10m' });
 
       return res.json({
         success: false,
         requires2FA: true,
         requiresSetup: true,
-        message: 'Vui lòng xác thực email để hoàn tất đăng nhập lần đầu.',
+        message: 'Vui lòng quét mã QR bằng ứng dụng authenticator để hoàn tất đăng nhập lần đầu.',
         tempToken,
+        twoFactorSecret: secret,
+        twoFactorQrCode: qrCodeUrl,
       });
     }
 
@@ -574,7 +586,7 @@ export const resetPassword = async (req: Request, res: Response) => {
 };
 
 // ============================================================
-// VERIFY LOGIN OTP (2FA verification step)
+// VERIFY LOGIN TOTP (2FA verification step)
 // ============================================================
 export const verifyLoginOTP = async (req: Request, res: Response) => {
   try {
@@ -583,7 +595,7 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
     if (!email || !otp || !tempToken) {
       return res.status(400).json({
         success: false,
-        message: 'Email, OTP, and tempToken are required.',
+        message: 'Email, OTP, và tempToken là bắt buộc.',
       });
     }
 
@@ -601,15 +613,6 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
       });
     }
 
-    // Verify OTP
-    const otpResult = await OTPService.verifyOTP(email, otp, 'login');
-    if (!otpResult.valid) {
-      return res.status(401).json({
-        success: false,
-        message: otpResult.error,
-      });
-    }
-
     // Get user
     const user = await UserDB.findById(decoded.id);
     if (!user) {
@@ -619,8 +622,15 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
       });
     }
 
-    // Clear OTP
-    OTPService.clearOTP(email);
+    // Verify TOTP from authenticator app
+    const isValid = authenticator.verify({ token: otp, secret: user.two_factor_secret || '' });
+    if (!isValid) {
+      return res.status(401).json({
+        success: false,
+        requires2FA: true,
+        message: 'Mã xác thực không đúng. Vui lòng kiểm tra lại ứng dụng authenticator.',
+      });
+    }
 
     // Check if this is a first-time setup (requiresSetup case from login)
     const isSetupFlow = (decoded as any).isSetup || false;
@@ -631,6 +641,12 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
         two_factor_enabled: true,
         two_factor_verified: true,
       });
+      // Re-fetch user to get updated data
+      const updatedUser = await UserDB.findById(decoded.id);
+      if (updatedUser) {
+        user.two_factor_enabled = true;
+        user.two_factor_verified = true;
+      }
     }
 
     // Generate full tokens
@@ -663,11 +679,13 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
         role: user.role,
         classId: user.class_id,
         avatarUrl: user.avatar_url || null,
+        phone: user.phone || null,
+        dateOfBirth: user.date_of_birth || null,
         two_factor_enabled: user.two_factor_enabled || false,
       },
     });
   } catch (error: any) {
-    console.error('[2FA] Verify login OTP error:', error);
+    console.error('[2FA] Verify login TOTP error:', error);
     res.status(500).json({
       success: false,
       message: error.message || 'Verification failed.',
@@ -783,29 +801,39 @@ export const googleLogin = async (req: Request, res: Response) => {
     // ===== 2FA CHECK: Google OAuth must respect 2FA requirement =====
     if (user.role === 'teacher' && process.env.REQUIRE_2FA === 'true') {
       if (user.two_factor_enabled && user.two_factor_verified) {
-        // User has 2FA enabled - require OTP via email
-        const otp = await OTPService.createLoginOTP(user.id, email);
-        await sendOTPEmail(email, otp, 'login');
-
+        // User has 2FA enabled - require TOTP from authenticator app
         return res.json({
           success: false,
           requires2FA: true,
-          message: 'Tai khoan cua ban da bat xac thuc 2FA. Vui long nhap ma xac thuc da gui den email.',
+          message: 'Tài khoản của bạn đã bật xác thực 2FA. Vui lòng nhập mã từ ứng dụng authenticator.',
           tempToken: generateToken(user.id, '5m'),
         });
       }
 
       if (!user.two_factor_enabled) {
-        // First-time Google login - setup 2FA required
-        const otp = await OTPService.createLoginOTP(user.id, email);
-        await sendOTPEmail(email, otp, 'login');
+        // First-time Google login - setup TOTP required
+        const secret = authenticator.generateSecret();
+        const otpauthUrl = authenticator.keyuri(user.email, 'Lan Anh English', secret);
+
+        // Generate QR code
+        let qrCodeUrl = '';
+        try {
+          qrCodeUrl = await QRCode.toDataURL(otpauthUrl);
+        } catch (err) {
+          console.error('Failed to generate QR code:', err);
+        }
+
+        // Store temp secret in DB (pending activation until verified)
+        await UserDB.update(user.id, { two_factor_secret: secret });
 
         return res.json({
           success: false,
           requires2FA: true,
           requiresSetup: true,
-          message: 'Vui long xac thuc email de hoan tat dang nhap lan dau.',
-          tempToken: generateToken(user.id, '5m'),
+          message: 'Vui lòng quét mã QR bằng ứng dụng authenticator để hoàn tất đăng nhập lần đầu.',
+          tempToken: generateToken(user.id, '10m'),
+          twoFactorSecret: secret,
+          twoFactorQrCode: qrCodeUrl,
         });
       }
     }
