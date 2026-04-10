@@ -12,7 +12,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Resend } from 'resend';
 import jwt from 'jsonwebtoken';
-import { authenticator } from 'otplib';
+import { generateSecret, generateURI, verify } from 'otplib';
 import QRCode from 'qrcode';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -200,12 +200,11 @@ export const login = async (req: Request, res: Response) => {
       }
 
       // Second step: verify TOTP
-      const isValid = authenticator.verify({ token: otp, secret: user.two_factor_secret || '' });
-      if (!isValid) {
+      const isValid = verify({ token: otp, secret: user.two_factor_secret || '' });      if (!isValid) {
         return res.status(401).json({
           success: false,
           requires2FA: true,
-          message: 'Mã xác thực không đúng. Vui lòng kiểm tra lại ứng dụng authenticator.',
+          message: 'Mã xác thực không đúng. Vui lòng kiểm tra lại ứng dụng TOTP.',
         });
       }
     }
@@ -213,8 +212,8 @@ export const login = async (req: Request, res: Response) => {
     // Check if first login (2FA not set up yet but enabled for all)
     if (user.role === 'teacher' && process.env.REQUIRE_2FA === 'true' && !user.two_factor_enabled) {
       // Generate TOTP secret for first-time setup
-      const secret = authenticator.generateSecret();
-      const otpauthUrl = authenticator.keyuri(user.email, 'Lan Anh English', secret);
+      const secret = generateSecret();
+      const otpauthUrl = generateURI({ secret, label: user.email, issuer: 'Lan Anh English' });
 
       // Generate QR code
       let qrCodeUrl = '';
@@ -623,12 +622,12 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
     }
 
     // Verify TOTP from authenticator app
-    const isValid = authenticator.verify({ token: otp, secret: user.two_factor_secret || '' });
+    const isValid = verify({ token: otp, secret: user.two_factor_secret || '' });
     if (!isValid) {
       return res.status(401).json({
         success: false,
         requires2FA: true,
-        message: 'Mã xác thực không đúng. Vui lòng kiểm tra lại ứng dụng authenticator.',
+        message: 'Mã xác thực không đúng. Vui lòng kiểm tra lại ứng dụng TOTP.',
       });
     }
 
@@ -805,15 +804,15 @@ export const googleLogin = async (req: Request, res: Response) => {
         return res.json({
           success: false,
           requires2FA: true,
-          message: 'Tài khoản của bạn đã bật xác thực 2FA. Vui lòng nhập mã từ ứng dụng authenticator.',
+          message: 'Tài khoản của bạn đã bật xác thực 2FA. Vui lòng nhập mã từ ứng dụng TOTP.',
           tempToken: generateToken(user.id, '5m'),
         });
       }
 
       if (!user.two_factor_enabled) {
         // First-time Google login - setup TOTP required
-        const secret = authenticator.generateSecret();
-        const otpauthUrl = authenticator.keyuri(user.email, 'Lan Anh English', secret);
+        const secret = generateSecret();
+        const otpauthUrl = generateURI({ secret, label: user.email, issuer: 'Lan Anh English' });
 
         // Generate QR code
         let qrCodeUrl = '';
