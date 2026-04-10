@@ -10,8 +10,6 @@ export interface User {
   student_id?: string;
   class_id?: string;
   avatar_url?: string;
-  phone?: string;
-  date_of_birth?: string;
   two_factor_enabled?: boolean;
   two_factor_secret?: string;
   two_factor_verified?: boolean;
@@ -86,7 +84,7 @@ export const UserDB = {
     return bcrypt.compare(candidatePassword, hashedPassword);
   },
 
-  async update(userId: string, updateData: { name?: string; email?: string; password?: string; avatar_url?: string; phone?: string; date_of_birth?: string; two_factor_enabled?: boolean; two_factor_verified?: boolean }): Promise<User> {
+  async update(userId: string, updateData: { name?: string; email?: string; password?: string; avatar_url?: string }): Promise<User> {
     const updateFields: any = {
       updated_at: new Date().toISOString(),
     };
@@ -95,10 +93,6 @@ export const UserDB = {
     if (updateData.email) updateFields.email = updateData.email.toLowerCase();
     if (updateData.password) updateFields.password = updateData.password;
     if (updateData.avatar_url !== undefined) updateFields.avatar_url = updateData.avatar_url;
-    if (updateData.phone !== undefined) updateFields.phone = updateData.phone;
-    if (updateData.date_of_birth !== undefined) updateFields.date_of_birth = updateData.date_of_birth;
-    if (updateData.two_factor_enabled !== undefined) updateFields.two_factor_enabled = updateData.two_factor_enabled;
-    if (updateData.two_factor_verified !== undefined) updateFields.two_factor_verified = updateData.two_factor_verified;
 
     const { data, error } = await supabase
       .from('users')

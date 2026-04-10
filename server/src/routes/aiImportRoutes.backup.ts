@@ -69,9 +69,12 @@ const IMAGES_PER_BATCH = 5;
 
 // ── Rate limit tracker ──────────────────────────────────────────────────────
 const MAX_GEMINI_REQUESTS_PER_DAY = 1000;
-const BATCH_DELAY_MS = 6000; // 6 seconds delay between batches to avoid 503
+const BATCH_DELAY_MS = 10000; // 10 seconds delay between batches (tăng từ 6s)
+const BREAKER_THRESHOLD = 3; // Số 503 liên tiếp để kích hoạt circuit breaker
+const BREAKER_COOLDOWN_MS = 90000; // 1.5 phút nghỉ khi circuit breaker kích hoạt
 let dailyRequestCount = 0;
 let dailyResetTime = getTodayResetUTC();
+let consecutive503Count = 0;
 
 function getTodayResetUTC(): Date {
   // Reset lúc 00:00 UTC mỗi ngày
@@ -566,17 +569,32 @@ ${textContent.slice(0, 12000)}`;
   return [];
 }
 
-/** Retry tự động khi Gemini trả 503 (high demand) hoặc 429 (quota). */
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 2000;
+/** Retry tự động khi Gemini trả 503 (high demand) hoặc 429 (quota). Exponential backoff + jitter */
+const MAX_RETRIES = 5;
+const BASE_RETRY_DELAY_MS = 5000; // 5s base
+const MAX_RETRY_DELAY_MS = 120000; // max 2 phút
 
-/** Parse retry delay từ error response của Gemini (429 quota) */
-function parseRetryDelay(errorMsg: string): number | null {
-  const match = errorMsg.match(/"retryDelay"\s*:\s*"(\d+)s"/i) ||
-                errorMsg.match(/Please retry in (\d+\.?\d*)s/i) ||
-                errorMsg.match(/retryDelay["\s:]+(\d+\.?\d*)/i);
-  if (match) {
-    return Math.ceil(parseFloat(match[1]) * 1000);
+/** Exponential backoff với jitter để tránh thundering herd */
+function calcExponentialBackoff(attempt: number): number {
+  const exponential = BASE_RETRY_DELAY_MS * Math.pow(2, attempt);
+  const jitter = Math.random() * BASE_RETRY_DELAY_MS;
+  return Math.min(exponential + jitter, MAX_RETRY_DELAY_MS);
+}
+
+/** Parse retry delay từ error response của Gemini (429 quota / 503 high demand) */
+function parseGeminiRetryDelay(errorMsg: string): number | null {
+  const patterns = [
+    /"retryDelay"\s*:\s*"(\d+)s"/i,
+    /Please retry in (\d+\.?\d*)s/i,
+    /retryDelay["\s:]+(\d+\.?\d*)/i,
+    /try again in (\d+\.?\d*)\s*(?:second|sec|s)/i,
+    /wait (\d+\.?\d*)\s*(?:second|sec|s)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = errorMsg.match(pattern);
+    if (match) {
+      return Math.ceil(parseFloat(match[1]) * 1000);
+    }
   }
   return null;
 }
@@ -593,13 +611,14 @@ async function geminiWithRetry<T>(fn: () => Promise<T>, label = 'Gemini call'): 
       const is429Quota = /429|Too Many Requests|quota exceeded|rate limit/i.test(msg);
 
       if ((is503 || is429Quota) && attempt < MAX_RETRIES) {
-        // Ưu tiên dùng retry delay từ server (thường 47-55s cho quota)
-        let delay = parseRetryDelay(msg);
+        // Ưu tiên dùng retry delay từ server Google (thường 45-55s cho quota)
+        let delay = parseGeminiRetryDelay(msg);
         if (!delay) {
-          delay = RETRY_DELAY_MS * (attempt + 1);
+          delay = calcExponentialBackoff(attempt);
         }
-        const delayType = is429Quota ? 'quota (429)' : '503';
-        console.warn(`[AI Import] ${label} hit ${delayType} (attempt ${attempt + 1}), retrying in ${Math.round(delay/1000)}s...`);
+        const delayType = is429Quota ? 'quota (429)' : '503 high demand';
+        const delaySec = (delay / 1000).toFixed(1);
+        console.warn(`[Gemini] ${label} hit ${delayType} (attempt ${attempt + 1}/${MAX_RETRIES + 1}), retrying in ${delaySec}s...`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -923,7 +942,16 @@ router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, r
       })));
 
       try {
+        // Circuit breaker: nếu có quá nhiều 503 gần đây, nghỉ một khoảng trước khi tiếp tục
+        if (consecutive503Count >= BREAKER_THRESHOLD) {
+          console.warn(`[CircuitBreaker] Too many 503s (${consecutive503Count}), pausing ${BREAKER_COOLDOWN_MS/1000}s before retry...`);
+          await new Promise(resolve => setTimeout(resolve, BREAKER_COOLDOWN_MS));
+          consecutive503Count = 0;
+          console.log('[CircuitBreaker] Resuming batch processing...');
+        }
+
         const results = await processBatchImagesWithGemini(images, batchIdx, geminiKey);
+        consecutive503Count = 0; // Reset counter on success
         for (const { originalname, questions } of results) {
           if (questions.length > 0) {
             allQuestions.push(...questions);
@@ -934,6 +962,11 @@ router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, r
         }
       } catch (batchErr: unknown) {
         const batchMsg = batchErr instanceof Error ? batchErr.message : String(batchErr);
+        const is503 = /503|high demand|Service Unavailable/i.test(batchMsg);
+        if (is503) {
+          consecutive503Count++;
+          console.warn(`[AI Import Batch] Gemini batch ${batchIdx} hit 503 (consecutive: ${consecutive503Count}/${BREAKER_THRESHOLD})`);
+        }
         console.error(`[AI Import Batch] Gemini batch ${batchIdx} failed:`, batchMsg);
         for (const file of batch) {
           errors.push({ file: file.originalname, message: `[Gemini batch error] ${batchMsg}` });

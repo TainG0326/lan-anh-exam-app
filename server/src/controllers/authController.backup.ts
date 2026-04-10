@@ -292,8 +292,6 @@ export const getMe = async (req: AuthRequest, res: Response) => {
         classId: user.class_id,
         studentId: (user as any).student_id,
         avatarUrl: user.avatar_url || null,
-        phone: user.phone || null,
-        dateOfBirth: user.date_of_birth || null,
       },
     });
   } catch (error: any) {
@@ -366,8 +364,6 @@ export const uploadAvatar = async (req: AuthRequest, res: Response) => {
         classId: updatedUser.class_id,
         studentId: (updatedUser as any).student_id,
         avatarUrl: updatedUser.avatar_url || null,
-        phone: updatedUser.phone || null,
-        dateOfBirth: updatedUser.date_of_birth || null,
       },
     });
   } catch (error: any) {
@@ -384,7 +380,7 @@ export const uploadAvatar = async (req: AuthRequest, res: Response) => {
 
 export const updateProfile = async (req: AuthRequest, res: Response) => {
   try {
-    const { name, email, password, currentPassword, avatar_url, phone, date_of_birth } = req.body;
+    const { name, email, password, currentPassword, avatar_url } = req.body;
     const userId = req.user?.id;
 
     if (!userId) {
@@ -445,8 +441,6 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
       }
       updateData.avatar_url = avatar_url;
     }
-    if (phone !== undefined) updateData.phone = phone;
-    if (date_of_birth !== undefined) updateData.date_of_birth = date_of_birth;
 
     const updatedUser = await UserDB.update(userId, updateData);
 
@@ -460,8 +454,6 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         classId: updatedUser.class_id,
         studentId: (updatedUser as any).student_id,
         avatarUrl: updatedUser.avatar_url || null,
-        phone: updatedUser.phone || null,
-        dateOfBirth: updatedUser.date_of_birth || null,
       },
     });
   } catch (error: any) {
