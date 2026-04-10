@@ -643,6 +643,213 @@ function getGeminiModel(genAI: GoogleGenerativeAI) {
   });
 }
 
+// ── Race: Claude vs Gemini — ai nào reply trước dùng kết quả đó ──────────────
+
+/** Race result */
+type RaceResult<T> = {
+  winner: 'claude' | 'gemini';
+  data: T;
+};
+
+/**
+ * Gửi đồng thời Claude + Gemini cho text/PDF/DOCX.
+ * AI nào reply trước → dùng kết quả; cái còn lại bị cancel.
+ */
+async function raceTextAI(
+  extractedText: string,
+  originalname: string,
+  geminiKey: string
+): Promise<RaceResult<GeminiQuestion[]>> {
+  if (!ANTHROPIC_API_KEY || !geminiKey) {
+    throw new Error('Both ANTHROPIC_API_KEY and GEMINI_API_KEY required for race mode');
+  }
+
+  const timeout = 60_000; // 60s cho text — đủ để xử lý DOCX
+
+  // ── Claude side ──
+  const claudeAbort = new AbortController();
+  const claudeTimer = setTimeout(() => claudeAbort.abort(), timeout);
+
+  // ── Gemini side ──
+  const geminiAbort = new AbortController();
+  const geminiTimer = setTimeout(() => geminiAbort.abort(), timeout);
+
+  let claudeDone = false;
+  let geminiDone = false;
+
+  const claudePromise = (async () => {
+    try {
+      const result = await processTextWithClaude(extractedText, originalname);
+      if (geminiDone) {
+        console.log(`[Race Text] Claude won for ${originalname} (Gemini already done, ignoring Claude result)`);
+        return null;
+      }
+      claudeDone = true;
+      clearTimeout(geminiTimer);
+      geminiAbort.abort();
+      console.log(`[Race Text] ✅ Claude WON for ${originalname}: ${result.length} questions`);
+      return result;
+    } catch (err) {
+      if (claudeAbort.signal.aborted) return null;
+      claudeDone = true;
+      clearTimeout(geminiTimer);
+      if (!geminiDone) geminiAbort.abort();
+      throw err;
+    } finally {
+      clearTimeout(claudeTimer);
+    }
+  })();
+
+  const geminiPromise = (async () => {
+    try {
+      const result = await processTextWithGemini(extractedText, originalname, geminiKey);
+      if (claudeDone) {
+        console.log(`[Race Text] Gemini won for ${originalname} (Claude already done, ignoring Gemini result)`);
+        return null;
+      }
+      geminiDone = true;
+      clearTimeout(claudeTimer);
+      claudeAbort.abort();
+      console.log(`[Race Text] ✅ Gemini WON for ${originalname}: ${result.length} questions`);
+      return result;
+    } catch (err) {
+      if (geminiAbort.signal.aborted) return null;
+      geminiDone = true;
+      clearTimeout(claudeTimer);
+      if (!claudeDone) claudeAbort.abort();
+      throw err;
+    } finally {
+      clearTimeout(geminiTimer);
+    }
+  })();
+
+  const race = await Promise.any([claudePromise, geminiPromise]).catch(() => null);
+
+  // Nếu Promise.any không resolve (cả 2 cùng fail/null), thử lần lượt
+  if (!race) {
+    const errors: string[] = [];
+    if (!claudeDone) {
+      try {
+        clearTimeout(claudeTimer);
+        const result = await processTextWithClaude(extractedText, originalname);
+        return { winner: 'claude' as const, data: result };
+      } catch (e) {
+        errors.push(`Claude: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    if (!geminiDone) {
+      try {
+        clearTimeout(geminiTimer);
+        const result = await processTextWithGemini(extractedText, originalname, geminiKey);
+        return { winner: 'gemini' as const, data: result };
+      } catch (e) {
+        errors.push(`Gemini: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    throw new Error(`[Race Text] All providers failed for ${originalname}: ${errors.join(' | ')}`);
+  }
+
+  return race;
+}
+
+/**
+ * Gửi đồng thời Claude Vision + Gemini Vision cho ảnh.
+ * AI nào reply trước → dùng kết quả; cái còn lại bị cancel.
+ */
+async function raceImageBatchAI(
+  images: { imageData: Buffer; originalname: string; mimeStr: string }[],
+  batchIndex: number,
+  geminiKey: string
+): Promise<RaceResult<{ originalname: string; questions: GeminiQuestion[] }[]>> {
+  if (!ANTHROPIC_API_KEY || !geminiKey) {
+    throw new Error('Both ANTHROPIC_API_KEY and GEMINI_API_KEY required for race mode');
+  }
+
+  const timeout = 120_000; // 120s cho batch ảnh
+
+  const claudeAbort = new AbortController();
+  const claudeTimer = setTimeout(() => claudeAbort.abort(), timeout);
+
+  const geminiAbort = new AbortController();
+  const geminiTimer = setTimeout(() => geminiAbort.abort(), timeout);
+
+  let claudeDone = false;
+  let geminiDone = false;
+
+  const claudePromise = (async () => {
+    try {
+      const result = await processBatchImagesWithClaude(images, batchIndex);
+      if (geminiDone) {
+        console.log(`[Race Image Batch ${batchIndex}] Claude done but Gemini already won, ignoring`);
+        return null;
+      }
+      claudeDone = true;
+      clearTimeout(geminiTimer);
+      geminiAbort.abort();
+      console.log(`[Race Image Batch ${batchIndex}] ✅ Claude WON`);
+      return result;
+    } catch (err) {
+      if (claudeAbort.signal.aborted) return null;
+      claudeDone = true;
+      clearTimeout(geminiTimer);
+      if (!geminiDone) geminiAbort.abort();
+      throw err;
+    } finally {
+      clearTimeout(claudeTimer);
+    }
+  })();
+
+  const geminiPromise = (async () => {
+    try {
+      const result = await processBatchImagesWithGemini(images, batchIndex, geminiKey);
+      if (claudeDone) {
+        console.log(`[Race Image Batch ${batchIndex}] Gemini done but Claude already won, ignoring`);
+        return null;
+      }
+      geminiDone = true;
+      clearTimeout(claudeTimer);
+      claudeAbort.abort();
+      console.log(`[Race Image Batch ${batchIndex}] ✅ Gemini WON`);
+      return result;
+    } catch (err) {
+      if (geminiAbort.signal.aborted) return null;
+      geminiDone = true;
+      clearTimeout(claudeTimer);
+      if (!claudeDone) claudeAbort.abort();
+      throw err;
+    } finally {
+      clearTimeout(geminiTimer);
+    }
+  })();
+
+  const race = await Promise.any([claudePromise, geminiPromise]).catch(() => null);
+
+  if (!race) {
+    const errors: string[] = [];
+    if (!claudeDone) {
+      try {
+        clearTimeout(claudeTimer);
+        const result = await processBatchImagesWithClaude(images, batchIndex);
+        return { winner: 'claude' as const, data: result };
+      } catch (e) {
+        errors.push(`Claude: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    if (!geminiDone) {
+      try {
+        clearTimeout(geminiTimer);
+        const result = await processBatchImagesWithGemini(images, batchIndex, geminiKey);
+        return { winner: 'gemini' as const, data: result };
+      } catch (e) {
+        errors.push(`Gemini: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    throw new Error(`[Race Image Batch ${batchIndex}] All providers failed: ${errors.join(' | ')}`);
+  }
+
+  return race;
+}
+
 /** Phân loại lỗi để hiển thị thông điệp phù hợp cho user */
 function classifyError(msg: string): { category: string; suggestion: string } {
   const lowerMsg = msg.toLowerCase();
@@ -838,17 +1045,42 @@ router.post('/import', aiUploadMiddleware, async (req: AuthRequest, res) => {
     const filePath = req.file.path;
     const { mimetype, originalname } = req.file;
     const geminiKey = getGeminiKeyFromEnv() ?? '';
-    console.log('[AI Import] file:', originalname, 'mime:', mimetype, 'GEMINI:', !!geminiKey);
+    console.log('[AI Import] file:', originalname, 'mime:', mimetype);
 
-    if (!geminiKey) {
+    if (!geminiKey && !ANTHROPIC_API_KEY) {
       await fs.unlink(filePath).catch(() => {});
       return res.status(500).json({
         success: false,
-        message: 'GEMINI_API_KEY not configured on server (Render).'
+        message: 'AI not configured. Add ANTHROPIC_API_KEY and/or GEMINI_API_KEY on server.'
       });
     }
 
-    const questions = await processSingleFile(filePath, mimetype, originalname, geminiKey);
+    const useRace = Boolean(geminiKey && ANTHROPIC_API_KEY);
+    console.log(`[AI Import] race: ${useRace}`);
+
+    let questions: GeminiQuestion[];
+
+    if (useRace) {
+      const isImage = /\.(jpg|jpeg|png|webp)$/i.test(originalname) ||
+        ['image/jpeg', 'image/png', 'image/webp'].includes(mimetype);
+
+      if (isImage) {
+        const imageData = await fs.readFile(filePath);
+        const mimeStr = mimetype;
+        const images = [{ imageData, originalname, mimeStr }];
+        const raceResult = await raceImageBatchAI(images, 1, geminiKey);
+        questions = raceResult.data.flatMap(r => r.questions);
+        console.log(`[AI Import] ${originalname}: winner=${raceResult.winner}, questions=${questions.length}`);
+      } else {
+        const extractedText = await extractTextFromFile(filePath, mimetype, originalname);
+        const raceResult = await raceTextAI(extractedText, originalname, geminiKey);
+        questions = raceResult.data;
+        console.log(`[AI Import] ${originalname}: winner=${raceResult.winner}, questions=${questions.length}`);
+      }
+    } else {
+      questions = await processSingleFile(filePath, mimetype, originalname, geminiKey);
+      console.log(`[AI Import] ${originalname}: ${questions.length} questions`);
+    }
 
     await fs.unlink(filePath).catch(() => {});
 
@@ -902,16 +1134,17 @@ router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, r
     }
 
     const geminiKey = getGeminiKeyFromEnv() ?? '';
-    if (!geminiKey) {
+    if (!geminiKey && !ANTHROPIC_API_KEY) {
       await Promise.all(files.map((f) => fs.unlink(f.path).catch(() => {})));
       return res.status(500).json({
         success: false,
-        message: 'GEMINI_API_KEY not configured on server (Render).'
+        message: 'AI not configured. Add ANTHROPIC_API_KEY and/or GEMINI_API_KEY on server.'
       });
     }
 
+    const useRace = Boolean(geminiKey && ANTHROPIC_API_KEY);
     console.log(
-      `[AI Import Batch] ${files.length} files (GEMINI: true), batch size: ${IMAGES_PER_BATCH}`
+      `[AI Import Batch] ${files.length} files, batch size: ${IMAGES_PER_BATCH}, race: ${useRace}`
     );
     const allQuestions: GeminiQuestion[] = [];
     const errors: { file: string; message: string }[] = [];
@@ -942,16 +1175,26 @@ router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, r
       })));
 
       try {
-        // Circuit breaker: nếu có quá nhiều 503 gần đây, nghỉ một khoảng trước khi tiếp tục
         if (consecutive503Count >= BREAKER_THRESHOLD) {
-          console.warn(`[CircuitBreaker] Too many 503s (${consecutive503Count}), pausing ${BREAKER_COOLDOWN_MS/1000}s before retry...`);
+          console.warn(`[CircuitBreaker] Too many 503s (${consecutive503Count}), pausing ${BREAKER_COOLDOWN_MS/1000}s...`);
           await new Promise(resolve => setTimeout(resolve, BREAKER_COOLDOWN_MS));
           consecutive503Count = 0;
-          console.log('[CircuitBreaker] Resuming batch processing...');
         }
 
-        const results = await processBatchImagesWithGemini(images, batchIdx, geminiKey);
-        consecutive503Count = 0; // Reset counter on success
+        let results: { originalname: string; questions: GeminiQuestion[] }[];
+
+        if (useRace) {
+          // Race: Claude vs Gemini — ai reply trước dùng kết quả
+          const raceResult = await raceImageBatchAI(images, batchIdx, geminiKey);
+          results = raceResult.data;
+          console.log(`[AI Import Batch] Image batch ${batchIdx}: winner=${raceResult.winner}`);
+        } else if (ANTHROPIC_API_KEY) {
+          results = await processBatchImagesWithClaude(images, batchIdx);
+        } else {
+          results = await processBatchImagesWithGemini(images, batchIdx, geminiKey);
+        }
+
+        consecutive503Count = 0;
         for (const { originalname, questions } of results) {
           if (questions.length > 0) {
             allQuestions.push(...questions);
@@ -965,28 +1208,35 @@ router.post('/import-batch', aiUploadArrayMiddleware, async (req: AuthRequest, r
         const is503 = /503|high demand|Service Unavailable/i.test(batchMsg);
         if (is503) {
           consecutive503Count++;
-          console.warn(`[AI Import Batch] Gemini batch ${batchIdx} hit 503 (consecutive: ${consecutive503Count}/${BREAKER_THRESHOLD})`);
+          console.warn(`[AI Import Batch] Image batch ${batchIdx} hit 503 (consecutive: ${consecutive503Count}/${BREAKER_THRESHOLD})`);
         }
-        console.error(`[AI Import Batch] Gemini batch ${batchIdx} failed:`, batchMsg);
+        console.error(`[AI Import Batch] Image batch ${batchIdx} failed:`, batchMsg);
         for (const file of batch) {
-          errors.push({ file: file.originalname, message: `[Gemini batch error] ${batchMsg}` });
+          errors.push({ file: file.originalname, message: batchMsg });
         }
       } finally {
         await Promise.all(batch.map(f => fs.unlink(f.path).catch(() => {})));
       }
 
-      // 4-second delay between batches to avoid rate limiting
       if (batchIdx < Math.ceil(imageFiles.length / IMAGES_PER_BATCH)) {
         await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
       }
     }
 
-    // ── Non-image (PDF/DOCX): Gemini Flash text ──
+    // ── Non-image (PDF/DOCX): race Claude vs Gemini ──
     for (const file of nonImageFiles) {
       try {
-        const qs = await processSingleFile(file.path, file.mimetype, file.originalname, geminiKey);
+        let qs: GeminiQuestion[];
+        if (useRace) {
+          const extractedText = await extractTextFromFile(file.path, file.mimetype, file.originalname);
+          const raceResult = await raceTextAI(extractedText, file.originalname, geminiKey);
+          qs = raceResult.data;
+          console.log(`[AI Import Batch] ${file.originalname}: winner=${raceResult.winner}, questions=${qs.length}`);
+        } else {
+          qs = await processSingleFile(file.path, file.mimetype, file.originalname, geminiKey);
+          console.log(`[AI Import Batch] ${file.originalname}: ${qs.length} questions`);
+        }
         allQuestions.push(...qs);
-        console.log(`[AI Import Batch] ${file.originalname}: ${qs.length} questions`);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         errors.push({ file: file.originalname, message: msg });

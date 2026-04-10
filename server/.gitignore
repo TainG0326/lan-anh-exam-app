@@ -1,0 +1,6 @@
+.vercel
+.env.new
+.env.vercel
+.env.local
+.env.*.local
+.env

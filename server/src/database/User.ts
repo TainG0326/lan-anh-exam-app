@@ -84,7 +84,7 @@ export const UserDB = {
     return bcrypt.compare(candidatePassword, hashedPassword);
   },
 
-  async update(userId: string, updateData: { name?: string; email?: string; password?: string; avatar_url?: string }): Promise<User> {
+  async update(userId: string, updateData: { name?: string; email?: string; password?: string; avatar_url?: string; two_factor_enabled?: boolean; two_factor_verified?: boolean }): Promise<User> {
     const updateFields: any = {
       updated_at: new Date().toISOString(),
     };
@@ -93,6 +93,8 @@ export const UserDB = {
     if (updateData.email) updateFields.email = updateData.email.toLowerCase();
     if (updateData.password) updateFields.password = updateData.password;
     if (updateData.avatar_url !== undefined) updateFields.avatar_url = updateData.avatar_url;
+    if (updateData.two_factor_enabled !== undefined) updateFields.two_factor_enabled = updateData.two_factor_enabled;
+    if (updateData.two_factor_verified !== undefined) updateFields.two_factor_verified = updateData.two_factor_verified;
 
     const { data, error } = await supabase
       .from('users')

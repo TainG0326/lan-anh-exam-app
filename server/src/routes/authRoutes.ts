@@ -9,7 +9,7 @@ router.post('/register', register);
 router.post('/login', login);
 router.post('/google-login', googleLogin);
 router.post('/verify-login-otp', verifyLoginOTP);
-router.post('/request-2fa', protect, request2FA);
+router.post('/request-2fa', request2FA);
 router.get('/whitelist', protect, authorize('admin'), listWhitelist);
 router.post('/whitelist', protect, authorize('admin'), manageWhitelist);
 router.delete('/whitelist/:email', protect, authorize('admin'), manageWhitelist);

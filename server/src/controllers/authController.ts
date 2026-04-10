@@ -11,6 +11,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Resend } from 'resend';
+import jwt from 'jsonwebtoken';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -216,11 +217,16 @@ export const login = async (req: Request, res: Response) => {
       const otp = await OTPService.createLoginOTP(user.id, email);
       await sendOTPEmail(email, otp, 'login');
 
+      // Include isSetup flag in tempToken so verifyLoginOTP knows to enable 2FA
+      const tempTokenPayload = { id: user.id, isSetup: true };
+      const tempToken = jwt.sign(tempTokenPayload, process.env.JWT_SECRET || 'secret', { expiresIn: '5m' });
+
       return res.json({
         success: false,
         requires2FA: true,
         requiresSetup: true,
         message: 'Vui lòng xác thực email để hoàn tất đăng nhập lần đầu.',
+        tempToken,
       });
     }
 
@@ -574,10 +580,9 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
     }
 
     // Verify temp token
-    const jwt = await import('jsonwebtoken');
     let decoded: any;
     try {
-      decoded = jwt.default.verify(
+      decoded = jwt.verify(
         tempToken,
         process.env.JWT_SECRET || 'secret'
       );
@@ -608,6 +613,17 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
 
     // Clear OTP
     OTPService.clearOTP(email);
+
+    // Check if this is a first-time setup (requiresSetup case from login)
+    const isSetupFlow = (decoded as any).isSetup || false;
+
+    // If this is the setup flow (first-time login), enable 2FA for the user
+    if (isSetupFlow && user.role === 'teacher') {
+      await UserDB.update(user.id, {
+        two_factor_enabled: true,
+        two_factor_verified: true,
+      });
+    }
 
     // Generate full tokens
     const accessToken = generateToken(user.id);
@@ -653,10 +669,35 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
 
 // ============================================================
 // REQUEST 2FA CODE (re-send OTP for login)
+// Note: Called during 2FA flow - accepts either full auth token or tempToken
 // ============================================================
-export const request2FA = async (req: AuthRequest, res: Response) => {
+export const request2FA = async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.id;
+    let userId: string | null = null;
+
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        const jwtLib = await import('jsonwebtoken');
+        const decoded = jwtLib.default.verify(token, process.env.JWT_SECRET || 'secret') as { id: string };
+        userId = decoded.id;
+      } catch {
+        // Try as tempToken
+        try {
+          const jwtLib = await import('jsonwebtoken');
+          const decoded = jwtLib.default.verify(token, process.env.JWT_SECRET || 'secret') as { id: string };
+          userId = decoded.id;
+        } catch {
+          // Not valid
+        }
+      }
+    }
+
+    if (!userId && req.body.email) {
+      const user = await UserDB.findByEmail(req.body.email);
+      userId = user?.id || null;
+    }
 
     if (!userId) {
       return res.status(401).json({
@@ -673,10 +714,7 @@ export const request2FA = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Create OTP for login
     const otp = await OTPService.createLoginOTP(user.id, user.email);
-
-    // Send OTP email
     const emailSent = await sendOTPEmail(user.email, otp, 'login');
 
     if (!emailSent) {
@@ -688,7 +726,7 @@ export const request2FA = async (req: AuthRequest, res: Response) => {
 
     res.json({
       success: true,
-      message: 'Mã xác thực đã được gửi đến email của bạn.',
+      message: 'Ma xac thuc da duoc gui den email cua ban.',
     });
   } catch (error: any) {
     console.error('[2FA] Request 2FA error:', error);
@@ -733,6 +771,37 @@ export const googleLogin = async (req: Request, res: Response) => {
     } else if (avatarUrl && user.role === 'teacher') {
       user = await UserDB.update(user.id, { avatar_url: avatarUrl });
     }
+
+    // ===== 2FA CHECK: Google OAuth must respect 2FA requirement =====
+    if (user.role === 'teacher' && process.env.REQUIRE_2FA === 'true') {
+      if (user.two_factor_enabled && user.two_factor_verified) {
+        // User has 2FA enabled - require OTP via email
+        const otp = await OTPService.createLoginOTP(user.id, email);
+        await sendOTPEmail(email, otp, 'login');
+
+        return res.json({
+          success: false,
+          requires2FA: true,
+          message: 'Tai khoan cua ban da bat xac thuc 2FA. Vui long nhap ma xac thuc da gui den email.',
+          tempToken: generateToken(user.id, '5m'),
+        });
+      }
+
+      if (!user.two_factor_enabled) {
+        // First-time Google login - setup 2FA required
+        const otp = await OTPService.createLoginOTP(user.id, email);
+        await sendOTPEmail(email, otp, 'login');
+
+        return res.json({
+          success: false,
+          requires2FA: true,
+          requiresSetup: true,
+          message: 'Vui long xac thuc email de hoan tat dang nhap lan dau.',
+          tempToken: generateToken(user.id, '5m'),
+        });
+      }
+    }
+    // ===== End 2FA check =====
 
     const accessToken = generateToken(user.id);
     const refreshToken = generateRefreshToken(user.id);
@@ -819,11 +888,11 @@ export const manageWhitelist = async (req: AuthRequest, res: Response) => {
         message: 'Email đã được thêm vào whitelist.',
       });
     }
-  } catch (error: any) {
-    console.error('[WHITELIST] Manage error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to manage whitelist.',
-    });
-  }
+    } catch (error: any) {
+      console.error('[WHITELIST] Manage error:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Failed to manage whitelist.',
+      });
+    }
 };
