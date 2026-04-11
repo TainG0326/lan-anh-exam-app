@@ -23,42 +23,32 @@ const __dirname = path.dirname(__filename);
 // ============================================================
 // TRUSTED DEVICE HELPERS
 // ============================================================
-const TRUSTED_DEVICE_COOKIE = 'td_token';
+const TRUSTED_DEVICE_KEY = 'td_token';
 const TRUSTED_DEVICE_DAYS = 30;
 
-const setTrustedDeviceCookie = (res: Response, rawToken: string) => {
-  const isProduction = process.env.NODE_ENV === 'production';
-  res.cookie(TRUSTED_DEVICE_COOKIE, rawToken, {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? 'none' : ('lax' as const),
-    maxAge: TRUSTED_DEVICE_DAYS * 24 * 60 * 60 * 1000,
-  });
-};
-
-const clearTrustedDeviceCookie = (res: Response) => {
-  const isProduction = process.env.NODE_ENV === 'production';
-  res.clearCookie(TRUSTED_DEVICE_COOKIE, {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? 'none' : ('lax' as const),
-  });
+const getTrustedDeviceTokenFromHeader = (req: Request): string | undefined => {
+  return req.headers['x-device-token'] as string | undefined;
 };
 
 const getTrustedDeviceToken = (req: Request): string | undefined => {
-  return req.cookies?.[TRUSTED_DEVICE_COOKIE];
+  // Ưu tiên đọc từ header (cross-origin reliable)
+  const headerToken = getTrustedDeviceTokenFromHeader(req);
+  if (headerToken) return headerToken;
+  // Fallback: đọc từ cookie
+  return req.cookies?.[TRUSTED_DEVICE_KEY];
 };
 
 const generateDeviceToken = (): string => {
   return crypto.randomBytes(32).toString('hex');
 };
 
+// Returns the raw token to be stored client-side (localStorage)
 const successfulLoginWithDevice = async (
   res: Response,
   userId: string,
   userAgent?: string,
   ipAddress?: string
-) => {
+): Promise<string> => {
   const rawToken = generateDeviceToken();
   await TrustedDeviceDB.create({
     userId,
@@ -67,12 +57,11 @@ const successfulLoginWithDevice = async (
     ipAddress,
     daysValid: TRUSTED_DEVICE_DAYS,
   });
-  setTrustedDeviceCookie(res, rawToken);
+  return rawToken; // Return token for client to store
 };
 
 const revokeAllTrustedDevices = async (res: Response, userId: string) => {
   await TrustedDeviceDB.revokeAll(userId);
-  clearTrustedDeviceCookie(res);
 };
 
 // ============================================================
@@ -266,6 +255,7 @@ export const login = async (req: Request, res: Response) => {
             token: accessToken,
             refreshToken,
             trustedDevice: true,
+            deviceToken: deviceToken, // Return the existing token for frontend reference
             user: {
               id: user.id,
               email: user.email,
@@ -777,10 +767,11 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
     });
 
     // Set trusted device cookie if user checked "Remember this device"
+    let deviceToken: string | null = null;
     const trustedDevice = !!rememberDevice;
     if (trustedDevice) {
       const ipAddress = req.ip || req.socket?.remoteAddress || undefined;
-      await successfulLoginWithDevice(res, user.id, req.headers['user-agent'], ipAddress);
+      deviceToken = await successfulLoginWithDevice(res, user.id, req.headers['user-agent'], ipAddress);
     }
 
     res.json({
@@ -788,6 +779,7 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
       token: accessToken,
       refreshToken,
       trustedDevice,
+      deviceToken, // Return token for frontend to store in localStorage
       user: {
         id: user.id,
         email: user.email,
@@ -884,7 +876,7 @@ export const request2FA = async (req: Request, res: Response) => {
 // ============================================================
 export const googleLogin = async (req: Request, res: Response) => {
   try {
-    const { email, name, avatarUrl } = req.body;
+    const { email, name, avatarUrl, rememberDevice = false } = req.body;
 
     if (!email) {
       return res.status(400).json({
@@ -1014,10 +1006,19 @@ export const googleLogin = async (req: Request, res: Response) => {
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
+    // Create trusted device record if rememberDevice is true
+    let deviceToken: string | null = null;
+    if (rememberDevice) {
+      const ipAddress = req.ip || req.socket?.remoteAddress || undefined;
+      deviceToken = await successfulLoginWithDevice(res, user.id, req.headers['user-agent'], ipAddress);
+    }
+
     res.json({
       success: true,
       token: accessToken,
       refreshToken,
+      trustedDevice: !!deviceToken,
+      deviceToken,
       user: {
         id: user.id,
         email: user.email,

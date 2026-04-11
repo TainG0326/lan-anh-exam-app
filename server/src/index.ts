@@ -63,6 +63,7 @@ const corsOptions: cors.CorsOptions = {
     'Content-Type',
     'Authorization',
     'X-Access-Token',
+    'X-Device-Token',
     'Cookie',
     'Origin',
     'Accept',
