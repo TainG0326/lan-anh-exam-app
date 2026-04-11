@@ -167,16 +167,8 @@ export const login = async (req: Request, res: Response) => {
       });
     }
 
-    // Check whitelist for teacher role
-    if (user.role === 'teacher') {
-      const whitelistCheck = await checkWhitelist(email, user.role);
-      if (!whitelistCheck.allowed) {
-        return res.status(403).json({
-          success: false,
-          message: whitelistCheck.message,
-        });
-      }
-    }
+    // No whitelist check here — whitelist is only checked during account creation
+    // (register / google-login). Existing accounts can always log in.
 
     const isPasswordValid = await UserDB.comparePassword(user.password!, password);
     if (!isPasswordValid) {
@@ -640,12 +632,9 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
         two_factor_enabled: true,
         two_factor_verified: true,
       });
-      // Re-fetch user to get updated data
-      const updatedUser = await UserDB.findById(decoded.id);
-      if (updatedUser) {
-        user.two_factor_enabled = true;
-        user.two_factor_verified = true;
-      }
+      // Update the local user object so the response contains correct values
+      user.two_factor_enabled = true;
+      user.two_factor_verified = true;
     }
 
     // Generate full tokens
