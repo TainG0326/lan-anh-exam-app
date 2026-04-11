@@ -24,7 +24,7 @@ export const UserDB = {
     const { data, error } = await supabase
       .from('users')
       .select('*')
-      .eq('email', email.toLowerCase())
+      .ilike('email', email)
       .single();
 
     if (error || !data) return null;
@@ -61,6 +61,9 @@ export const UserDB = {
 
     if (userData.password) {
       insertData.password = await bcrypt.hash(userData.password, 12);
+    } else {
+      // Google OAuth users don't have a password - use a placeholder hash
+      insertData.password = await bcrypt.hash('GOOGLE_OAUTH_USER_' + userData.email, 12);
     }
 
     if (userData.avatar_url) {

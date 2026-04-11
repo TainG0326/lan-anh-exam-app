@@ -109,7 +109,7 @@ export const register = async (req: Request, res: Response) => {
     }
 
     const user = await UserDB.create({
-      email,
+      email: email.toLowerCase(),
       password,
       name,
       role,
