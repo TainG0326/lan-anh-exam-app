@@ -64,6 +64,15 @@ const revokeAllTrustedDevices = async (res: Response, userId: string) => {
   await TrustedDeviceDB.revokeAll(userId);
 };
 
+const clearTrustedDeviceCookie = (res: Response) => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  res.clearCookie(TRUSTED_DEVICE_KEY, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : ('lax' as const),
+  });
+};
+
 // ============================================================
 // WHITELIST CHECK HELPER
 // ============================================================
