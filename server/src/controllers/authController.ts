@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { UserDB } from '../database/User.js';
 import { WhitelistDB } from '../database/Whitelist.js';
+import { TrustedDeviceDB } from '../database/TrustedDevice.js';
 import { OTPService } from '../services/otpService.js';
 import { generateToken, generateRefreshToken } from '../utils/generateToken.js';
 import { AuthRequest } from '../middleware/auth.js';
@@ -14,9 +15,65 @@ import { Resend } from 'resend';
 import jwt from 'jsonwebtoken';
 import { generateSecret, generateURI, verify } from 'otplib';
 import QRCode from 'qrcode';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// ============================================================
+// TRUSTED DEVICE HELPERS
+// ============================================================
+const TRUSTED_DEVICE_COOKIE = 'td_token';
+const TRUSTED_DEVICE_DAYS = 30;
+
+const setTrustedDeviceCookie = (res: Response, rawToken: string) => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  res.cookie(TRUSTED_DEVICE_COOKIE, rawToken, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : ('lax' as const),
+    maxAge: TRUSTED_DEVICE_DAYS * 24 * 60 * 60 * 1000,
+  });
+};
+
+const clearTrustedDeviceCookie = (res: Response) => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  res.clearCookie(TRUSTED_DEVICE_COOKIE, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : ('lax' as const),
+  });
+};
+
+const getTrustedDeviceToken = (req: Request): string | undefined => {
+  return req.cookies?.[TRUSTED_DEVICE_COOKIE];
+};
+
+const generateDeviceToken = (): string => {
+  return crypto.randomBytes(32).toString('hex');
+};
+
+const successfulLoginWithDevice = async (
+  res: Response,
+  userId: string,
+  userAgent?: string,
+  ipAddress?: string
+) => {
+  const rawToken = generateDeviceToken();
+  await TrustedDeviceDB.create({
+    userId,
+    rawToken,
+    userAgent,
+    ipAddress,
+    daysValid: TRUSTED_DEVICE_DAYS,
+  });
+  setTrustedDeviceCookie(res, rawToken);
+};
+
+const revokeAllTrustedDevices = async (res: Response, userId: string) => {
+  await TrustedDeviceDB.revokeAll(userId);
+  clearTrustedDeviceCookie(res);
+};
 
 // ============================================================
 // WHITELIST CHECK HELPER
@@ -180,14 +237,55 @@ export const login = async (req: Request, res: Response) => {
 
     // Check if 2FA is enabled for this user
     if (user.two_factor_enabled && user.two_factor_verified) {
-      // 2FA is enabled - require TOTP from authenticator app
+      // Trusted device check: bypass 2FA if valid token exists
+      const deviceToken = getTrustedDeviceToken(req);
+      if (deviceToken) {
+        const trustedDevice = await TrustedDeviceDB.findValidDevice(user.id, deviceToken);
+        if (trustedDevice) {
+          await TrustedDeviceDB.updateLastUsed(trustedDevice.id);
+          // Bypass 2FA - trusted device
+          const accessToken = generateToken(user.id);
+          const refreshToken = generateRefreshToken(user.id);
+
+          const isProduction = process.env.NODE_ENV === 'production';
+          const cookieOptions = {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? 'none' : ('lax' as const),
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+          } as const;
+
+          res.cookie('accessToken', accessToken, cookieOptions);
+          res.cookie('refreshToken', refreshToken, {
+            ...cookieOptions,
+            maxAge: 30 * 24 * 60 * 60 * 1000,
+          });
+
+          return res.json({
+            success: true,
+            token: accessToken,
+            refreshToken,
+            trustedDevice: true,
+            user: {
+              id: user.id,
+              email: user.email,
+              name: user.name,
+              role: user.role,
+              classId: user.class_id,
+              avatarUrl: user.avatar_url || null,
+              two_factor_enabled: true,
+            },
+          });
+        }
+      }
+
+      // No valid trusted device - require TOTP
       if (!otp) {
-        // First step: password validated, need TOTP
         return res.json({
           success: false,
           requires2FA: true,
           message: 'Vui lòng nhập mã xác thực từ ứng dụng authenticator (Google Authenticator, Authy...).',
-          tempToken: generateToken(user.id, '5m'), // Short-lived token for 2FA verification
+          tempToken: generateToken(user.id, '5m'),
         });
       }
 
@@ -582,7 +680,7 @@ export const resetPassword = async (req: Request, res: Response) => {
 // ============================================================
 export const verifyLoginOTP = async (req: Request, res: Response) => {
   try {
-    const { email, otp, tempToken } = req.body;
+    const { email, otp, tempToken, rememberDevice } = req.body;
 
     if (!email || !otp || !tempToken) {
       return res.status(400).json({
@@ -678,10 +776,18 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
+    // Set trusted device cookie if user checked "Remember this device"
+    const trustedDevice = !!rememberDevice;
+    if (trustedDevice) {
+      const ipAddress = req.ip || req.socket?.remoteAddress || undefined;
+      await successfulLoginWithDevice(res, user.id, req.headers['user-agent'], ipAddress);
+    }
+
     res.json({
       success: true,
       token: accessToken,
       refreshToken,
+      trustedDevice,
       user: {
         id: user.id,
         email: user.email,
@@ -811,10 +917,52 @@ export const googleLogin = async (req: Request, res: Response) => {
     // ===== 2FA CHECK: Google OAuth must respect 2FA requirement =====
     if (user.role === 'teacher' && process.env.REQUIRE_2FA === 'true') {
       if (user.two_factor_enabled && user.two_factor_verified) {
-        // User has 2FA enabled - require TOTP from authenticator app
+        // Trusted device check: bypass 2FA if valid token exists
+        const deviceToken = getTrustedDeviceToken(req);
+        if (deviceToken) {
+          const trustedDevice = await TrustedDeviceDB.findValidDevice(user.id, deviceToken);
+          if (trustedDevice) {
+            await TrustedDeviceDB.updateLastUsed(trustedDevice.id);
+            const accessToken = generateToken(user.id);
+            const refreshToken = generateRefreshToken(user.id);
+
+            const isProduction = process.env.NODE_ENV === 'production';
+            const cookieOptions = {
+              httpOnly: true,
+              secure: isProduction,
+              sameSite: isProduction ? 'none' : ('lax' as const),
+              maxAge: 7 * 24 * 60 * 60 * 1000,
+            } as const;
+
+            res.cookie('accessToken', accessToken, cookieOptions);
+            res.cookie('refreshToken', refreshToken, {
+              ...cookieOptions,
+              maxAge: 30 * 24 * 60 * 60 * 1000,
+            });
+
+            return res.json({
+              success: true,
+              token: accessToken,
+              refreshToken,
+              trustedDevice: true,
+              user: {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                role: user.role,
+                classId: user.class_id,
+                avatarUrl: user.avatar_url || null,
+                two_factor_enabled: true,
+              },
+            });
+          }
+        }
+
+        // No trusted device - require TOTP
         return res.json({
           success: false,
           requires2FA: true,
+          skipSetup: true,
           message: 'Tài khoản của bạn đã bật xác thực 2FA. Vui lòng nhập mã từ ứng dụng TOTP.',
           tempToken: generateToken(user.id, '5m'),
         });
@@ -841,7 +989,7 @@ export const googleLogin = async (req: Request, res: Response) => {
           requires2FA: true,
           requiresSetup: true,
           message: 'Vui lòng quét mã QR bằng ứng dụng authenticator để hoàn tất đăng nhập lần đầu.',
-          tempToken: generateToken(user.id, '10m'),
+          tempToken: jwt.sign({ id: user.id, isSetup: true }, process.env.JWT_SECRET || 'secret', { expiresIn: '10m' }),
           twoFactorSecret: secret,
           twoFactorQrCode: qrCodeUrl,
         });
@@ -941,4 +1089,33 @@ export const manageWhitelist = async (req: AuthRequest, res: Response) => {
         message: error.message || 'Failed to manage whitelist.',
       });
     }
+};
+
+// ============================================================
+// REVOKE ALL TRUSTED DEVICES
+// ============================================================
+export const revokeTrustedDevices = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized.',
+      });
+    }
+
+    const count = await TrustedDeviceDB.revokeAll(userId);
+    clearTrustedDeviceCookie(res);
+
+    res.json({
+      success: true,
+      message: `Đã hủy ${count} thiết bị đáng tin cậy.`,
+    });
+  } catch (error: any) {
+    console.error('[TrustedDevice] Revoke error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to revoke trusted devices.',
+    });
+  }
 };

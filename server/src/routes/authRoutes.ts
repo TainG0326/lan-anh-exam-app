@@ -1,5 +1,5 @@
 import express from 'express';
-import { register, login, getMe, updateProfile, uploadAvatar, forgotPassword, resetPassword, verifyLoginOTP, request2FA, manageWhitelist, listWhitelist, googleLogin } from '../controllers/authController.js';
+import { register, login, getMe, updateProfile, uploadAvatar, forgotPassword, resetPassword, verifyLoginOTP, request2FA, manageWhitelist, listWhitelist, googleLogin, revokeTrustedDevices } from '../controllers/authController.js';
 import { protect, authorize } from '../middleware/auth.js';
 import { avatarUploadMiddleware } from '../utils/avatarUpload.js';
 
@@ -18,6 +18,7 @@ router.post('/reset-password', resetPassword);
 router.get('/me', protect, getMe);
 router.put('/profile', protect, updateProfile);
 router.post('/avatar', protect, avatarUploadMiddleware, uploadAvatar);
+router.post('/trusted-devices/revoke', protect, revokeTrustedDevices);
 
 export default router;
 
