@@ -586,26 +586,31 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
     if (!email || !otp || !tempToken) {
       return res.status(400).json({
         success: false,
-        message: 'Email, OTP, và tempToken là bắt buộc.',
+        message: 'Email, OTP, and tempToken are required.',
+      });
+    }
+
+    if (otp.length !== 6) {
+      return res.status(400).json({
+        success: false,
+        requires2FA: true,
+        message: 'OTP must be exactly 6 digits.',
       });
     }
 
     // Verify temp token
     let decoded: any;
     try {
-      decoded = jwt.verify(
-        tempToken,
-        process.env.JWT_SECRET || 'secret'
-      );
+      decoded = jwt.verify(tempToken, process.env.JWT_SECRET || 'secret');
     } catch {
       return res.status(401).json({
         success: false,
-        message: 'Token hết hạn. Vui lòng đăng nhập lại.',
+        message: 'Session expired. Please login again.',
       });
     }
 
     // Get user
-    const user = await UserDB.findById(decoded.id);
+    const user = await UserDB.findById((decoded as any).id);
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -613,26 +618,44 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
       });
     }
 
-    // Verify TOTP from authenticator app
-    const isValid = verify({ token: otp, secret: user.two_factor_secret || '' });
+    // TOTP secret must exist
+    if (!user.two_factor_secret) {
+      console.error('[2FA] verifyLoginOTP: no two_factor_secret for user', user.id);
+      return res.status(400).json({
+        success: false,
+        requires2FA: true,
+        message: '2FA is not configured. Please login again to set it up.',
+      });
+    }
+
+    // Verify TOTP — must pass this gate before any success response
+    let isValid = false;
+    try {
+      isValid = verify({ token: otp, secret: user.two_factor_secret });
+    } catch (verifyErr: any) {
+      console.error('[2FA] TOTP verify threw:', verifyErr.message);
+      return res.status(401).json({
+        success: false,
+        requires2FA: true,
+        message: 'Verification error. Please try again.',
+      });
+    }
+
     if (!isValid) {
       return res.status(401).json({
         success: false,
         requires2FA: true,
-        message: 'Mã xác thực không đúng. Vui lòng kiểm tra lại ứng dụng TOTP.',
+        message: 'Invalid code. Please check your authenticator app.',
       });
     }
 
-    // Check if this is a first-time setup (requiresSetup case from login)
+    // TOTP verified — check if first-time setup, enable 2FA
     const isSetupFlow = (decoded as any).isSetup || false;
-
-    // If this is the setup flow (first-time login), enable 2FA for the user
     if (isSetupFlow && user.role === 'teacher') {
       await UserDB.update(user.id, {
         two_factor_enabled: true,
         two_factor_verified: true,
       });
-      // Update the local user object so the response contains correct values
       user.two_factor_enabled = true;
       user.two_factor_verified = true;
     }
@@ -676,7 +699,7 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
     console.error('[2FA] Verify login TOTP error:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Verification failed.',
+      message: 'Verification failed.',
     });
   }
 };
