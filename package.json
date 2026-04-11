@@ -12,11 +12,19 @@
     "install-all": "npm install && cd server && npm install && cd ../teacher-web && npm install && cd ../student-web && npm install",
     "postinstall": "npm run install-all"
   },
-  "keywords": ["education", "exam", "english", "learning"],
+  "keywords": [
+    "education",
+    "exam",
+    "english",
+    "learning"
+  ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "react-dropzone": "^15.0.0"
   }
 }
-

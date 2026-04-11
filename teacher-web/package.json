@@ -9,8 +9,10 @@
     "deploy": "vercel --prod --token=VClUpEtN3GscnPNHV40414lr"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
     "@supabase/supabase-js": "^2.101.1",
     "axios": "^1.6.2",
+    "clsx": "^2.1.1",
     "date-fns": "^3.0.6",
     "framer-motion": "^12.38.0",
     "lucide-react": "^0.303.0",
@@ -19,9 +21,11 @@
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.21.1",
     "recharts": "^2.10.3",
-    "socket.io-client": "^4.6.1"
+    "socket.io-client": "^4.6.1",
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@types/node": "^25.6.0",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",
     "@vitejs/plugin-react": "^4.2.1",

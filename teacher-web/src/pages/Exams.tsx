@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getExams, Exam } from '../services/examService';
-import { FileText, Plus, Clock, Eye } from 'lucide-react';
+import { FileText, Clock, Eye, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format, isValid } from 'date-fns';
 import GlassCard from '../components/GlassCard';
 import BookLoader from '../components/BookLoader';
+import CreateExamModal from './CreateExamModal';
 
 export default function Exams() {
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     loadExams();
@@ -55,7 +57,7 @@ export default function Exams() {
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-text-primary tracking-tighter mb-2">
             Manage Exams
@@ -64,13 +66,14 @@ export default function Exams() {
             Create and manage online exams
           </p>
         </div>
-        <Link
-          to="/exams/create"
-          className="inline-flex items-center justify-center px-6 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-all duration-300 hover:scale-[1.02] shadow-lg"
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="group relative inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white font-bold rounded-2xl shadow-lg shadow-rose-500/30 hover:shadow-rose-500/50 transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0"
         >
-          <Plus className="w-5 h-5 mr-2" />
-          Create New Exam
-        </Link>
+          <span className="absolute -inset-0.5 bg-gradient-to-r from-rose-500 to-pink-500 rounded-2xl blur opacity-30 group-hover:opacity-60 transition-opacity duration-300" />
+          <FileText className="w-5 h-5 relative z-10" />
+          <span className="relative z-10">Create Exam</span>
+        </button>
       </div>
 
       {/* Exams Table - Glass Container */}
@@ -200,16 +203,17 @@ export default function Exams() {
               <FileText className="w-8 h-8 text-primary" />
             </div>
             <h3 className="text-lg font-bold text-text-primary mb-2">No exams yet</h3>
-            <p className="text-text-secondary text-sm mb-6">Create a new exam to get started</p>
-            <Link
-              to="/exams/create"
-              className="px-6 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-all duration-300 hover:scale-[1.02]"
-            >
-              Create Exam
-            </Link>
+            <p className="text-text-secondary text-sm">No exam data available</p>
           </div>
         )}
       </GlassCard>
+
+      {/* Create Exam Modal */}
+      <CreateExamModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={loadExams}
+      />
     </div>
   );
 }

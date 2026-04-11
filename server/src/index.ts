@@ -106,6 +106,7 @@ app.get('/', (_req: Request, res: Response) => {
       exams: '/api/exams',
       ai: '/api/ai',
       notifications: '/api/notifications',
+      grades: '/api/grades',
     },
   });
 });
@@ -119,6 +120,7 @@ async function mountApiRoutes(): Promise<void> {
     { default: examRoutes },
     { default: aiImportRoutes },
     { default: notificationRoutes },
+    { default: gradeRoutes },
   ] = await Promise.all([
     import('./routes/authRoutes.js'),
     import('./routes/classRoutes.js'),
@@ -127,6 +129,7 @@ async function mountApiRoutes(): Promise<void> {
     import('./routes/examRoutes.js'),
     import('./routes/aiImportRoutes.js'),
     import('./routes/notificationRoutes.js'),
+    import('./routes/gradeRoutes.js'),
   ]);
 
   app.use('/api/auth', authRoutes);
@@ -136,6 +139,7 @@ async function mountApiRoutes(): Promise<void> {
   app.use('/api/exams', examRoutes);
   app.use('/api/ai', aiImportRoutes);
   app.use('/api/notifications', notificationRoutes);
+  app.use('/api/grades', gradeRoutes);
 
   app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     console.error('Error:', err);

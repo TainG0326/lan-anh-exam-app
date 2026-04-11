@@ -3,16 +3,15 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Classes from './pages/Classes';
-import CreateClass from './pages/CreateClass';
 import ClassDetail from './pages/ClassDetail';
 import Exams from './pages/Exams';
-import CreateExam from './pages/CreateExam';
 import ExamResults from './pages/ExamResults';
-import CreateAssignment from './pages/CreateAssignment';
 import Assignments from './pages/Assignments';
 import Gradebook from './pages/Gradebook';
+import Grades from './pages/Grades';
 import Profile from './pages/Profile';
 import AuthCallback from './pages/AuthCallback';
 import Layout from './components/Layout';
@@ -46,6 +45,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/dashboard" element={<Navigate to="/" replace />} />
       <Route
@@ -58,14 +58,11 @@ function AppRoutes() {
       >
         <Route index element={<Dashboard />} />
         <Route path="classes" element={<Classes />} />
-        <Route path="classes/create" element={<CreateClass />} />
         <Route path="classes/:id" element={<ClassDetail />} />
         <Route path="exams" element={<Exams />} />
-        <Route path="exams/create" element={<CreateExam />} />
         <Route path="exams/:examId/results" element={<ExamResults />} />
         <Route path="assignments" element={<Assignments />} />
-        <Route path="assignments/create" element={<CreateAssignment />} />
-        <Route path="gradebook" element={<Gradebook />} />
+        <Route path="gradebook" element={<Grades />} />
         <Route path="profile" element={<Profile />} />
       </Route>
     </Routes>

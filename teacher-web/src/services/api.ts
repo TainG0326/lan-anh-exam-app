@@ -7,6 +7,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Quan trọng: gửi cookies kèm request (cho trusted device)
 });
 
 // Flag để tránh redirect khi đang init auth
@@ -21,6 +22,11 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  // Gửi device token nếu có (cho trusted device bypass 2FA)
+  const deviceToken = localStorage.getItem('deviceToken');
+  if (deviceToken) {
+    config.headers['X-Device-Token'] = deviceToken;
   }
   return config;
 });

@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { useLanguage } from '../context/LanguageContext';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 
-const API_URL = 'https://server-three-blue.vercel.app/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://english-exam-api-oksd.onrender.com/api';
 
 export default function AuthCallback() {
   const [searchParams] = useSearchParams();
@@ -85,22 +85,33 @@ export default function AuthCallback() {
         const userName = user.user_metadata?.full_name || user.user_metadata?.name || 'User';
         const userAvatar = user.user_metadata?.avatar_url || null;
 
+        // Lấy device token từ localStorage để gửi kèm request (bypass 2FA nếu đã đăng ký)
+        const existingDeviceToken = localStorage.getItem('deviceToken');
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
 
         let response: Response;
         try {
+          // Headers với device token để bypass 2FA nếu có
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+          };
+          if (existingDeviceToken) {
+            headers['X-Device-Token'] = existingDeviceToken;
+          }
+
           response = await fetch(API_URL + '/auth/google-login', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers,
             body: JSON.stringify({
               email: userEmail,
               name: userName,
               avatarUrl: userAvatar,
               role: 'teacher',
+              rememberDevice: true, // Google login tự động remember device
             }),
+            credentials: 'include',
             signal: controller.signal,
           });
 
@@ -116,10 +127,39 @@ export default function AuthCallback() {
             localStorage.setItem('token', result.token);
             localStorage.setItem('user', JSON.stringify(result.user));
             localStorage.setItem('sessionActive', Date.now().toString());
+            // Lưu device token nếu server trả về
+            if (result.deviceToken) {
+              localStorage.setItem('deviceToken', result.deviceToken);
+            }
             setSuccess(true);
-            setStatus('Login successful! Redirecting...');
+
+            // Nếu là trusted device, hiển thị thông báo
+            if (result.trustedDevice) {
+              setStatus('Trusted device verified! Redirecting...');
+            } else {
+              setStatus('Login successful! Redirecting...');
+            }
+
             setTimeout(() => {
               window.location.href = '/dashboard';
+            }, 500);
+          } else if (result.requires2FA) {
+            // 2FA required - redirect to login page with pre-filled email and QR code data
+            sessionStorage.setItem('pending2FAEmail', userEmail);
+            sessionStorage.setItem('pending2FATempToken', result.tempToken || '');
+            sessionStorage.setItem('pending2FASetup', result.requiresSetup ? 'true' : 'false');
+            if (result.skipSetup) {
+              sessionStorage.setItem('pending2FASkipSetup', 'true');
+            }
+            // Lưu QR code data nếu có (setup flow)
+            if (result.twoFactorQrCode) {
+              sessionStorage.setItem('pending2FQrCode', result.twoFactorQrCode);
+              sessionStorage.setItem('pending2FSecret', result.twoFactorSecret || '');
+            }
+            setSuccess(true);
+            setStatus('2FA verification required. Redirecting...');
+            setTimeout(() => {
+              window.location.href = '/login?2fa=required';
             }, 500);
           } else {
             setError(result.message || 'Login failed');

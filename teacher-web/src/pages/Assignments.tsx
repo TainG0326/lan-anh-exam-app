@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { getAssignments } from '../services/assignmentService';
-import { BookOpen, Plus, Clock, FileText } from 'lucide-react';
+import { BookOpen, Clock, FileText, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format, isValid } from 'date-fns';
 import GlassCard from '../components/GlassCard';
 import BookLoader from '../components/BookLoader';
+import CreateAssignmentModal from './CreateAssignmentModal';
 
 export default function Assignments() {
-  const navigate = useNavigate();
   const [assignments, setAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     loadAssignments();
@@ -38,7 +38,7 @@ export default function Assignments() {
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-text-primary tracking-tighter mb-2">
             Manage Assignments
@@ -48,11 +48,12 @@ export default function Assignments() {
           </p>
         </div>
         <button
-          onClick={() => navigate('/assignments/create')}
-          className="inline-flex items-center justify-center px-6 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-all duration-300 hover:scale-[1.02] shadow-lg"
+          onClick={() => setShowCreateModal(true)}
+          className="group relative inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold rounded-2xl shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0"
         >
-          <Plus className="w-5 h-5 mr-2" />
-          Create New Assignment
+          <span className="absolute -inset-0.5 bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl blur opacity-30 group-hover:opacity-60 transition-opacity duration-300" />
+          <BookOpen className="w-5 h-5 relative z-10" />
+          <span className="relative z-10">Create Assignment</span>
         </button>
       </div>
 
@@ -157,16 +158,17 @@ export default function Assignments() {
               <BookOpen className="w-8 h-8 text-primary" />
             </div>
             <h3 className="text-lg font-bold text-text-primary mb-2">No assignments yet</h3>
-            <p className="text-text-secondary text-sm mb-6">Create a new assignment to get started</p>
-            <button
-              onClick={() => navigate('/assignments/create')}
-              className="px-6 py-3 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-full transition-all duration-300 hover:scale-[1.02]"
-            >
-              Create Assignment
-            </button>
+            <p className="text-text-secondary text-sm">No assignment data available</p>
           </div>
         )}
       </GlassCard>
+
+      {/* Create Assignment Modal */}
+      <CreateAssignmentModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={loadAssignments}
+      />
     </div>
   );
 }

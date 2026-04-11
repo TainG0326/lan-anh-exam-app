@@ -54,11 +54,11 @@ export default function BookLoader({ className = '', label = 'LOADING' }: BookLo
           transform-style: preserve-3d;
         }
 
-        .page-1 { animation: flip-cycle 8s infinite 0.0s ease-in-out; }
-        .page-2 { animation: flip-cycle 8s infinite 0.4s ease-in-out; }
-        .page-3 { animation: flip-cycle 8s infinite 0.8s ease-in-out; }
-        .page-4 { animation: flip-cycle 8s infinite 1.2s ease-in-out; }
-        .page-5 { animation: flip-cycle 8s infinite 1.6s ease-in-out; }
+        .page-1 { animation: flip-cycle 4s infinite 0.0s ease-in-out; }
+        .page-2 { animation: flip-cycle 4s infinite 0.2s ease-in-out; }
+        .page-3 { animation: flip-cycle 4s infinite 0.4s ease-in-out; }
+        .page-4 { animation: flip-cycle 4s infinite 0.6s ease-in-out; }
+        .page-5 { animation: flip-cycle 4s infinite 0.8s ease-in-out; }
 
         .page-side {
           position: absolute;
@@ -104,7 +104,7 @@ export default function BookLoader({ className = '', label = 'LOADING' }: BookLo
         }
 
         @keyframes flip-cycle {
-          0%, 5% {
+          0%, 10% {
             transform: rotateY(0deg);
             z-index: 10;
           }
@@ -114,7 +114,7 @@ export default function BookLoader({ className = '', label = 'LOADING' }: BookLo
             z-index: 10;
           }
           75% { z-index: 100; }
-          95%, 100% {
+          90%, 100% {
             transform: rotateY(0deg);
             z-index: 10;
           }

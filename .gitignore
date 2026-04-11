@@ -49,6 +49,12 @@ electron-app/out/
 # package-lock.json
 # yarn.lock
 
+# Cursor rules
+.cursor/
+
+# Backup
+backup-auto/
+
 
 
 

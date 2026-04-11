@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { logout } from '../services/authService';
 import {
   LayoutDashboard,
@@ -16,8 +17,10 @@ import {
 import Logo from './Logo';
 
 export default function Layout() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
+  const { t } = useLanguage();
   const location = useLocation();
+  const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
@@ -41,15 +44,15 @@ export default function Layout() {
 
   const handleLogout = () => {
     logout();
-    window.location.href = '/login';
+    setUser(null);
   };
 
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/classes', label: 'My Classes', icon: Users },
-    { path: '/exams', label: 'Exams', icon: FileText },
-    { path: '/assignments', label: 'Assignments', icon: BookOpen },
-    { path: '/gradebook', label: 'Gradebook', icon: GraduationCap },
+    { path: '/', label: t('nav.dashboard'), icon: LayoutDashboard },
+    { path: '/classes', label: t('nav.classes'), icon: Users },
+    { path: '/exams', label: t('nav.exams'), icon: FileText },
+    { path: '/assignments', label: t('nav.assignments'), icon: BookOpen },
+    { path: '/gradebook', label: t('nav.gradebook'), icon: GraduationCap },
   ];
 
   return (
@@ -73,14 +76,18 @@ export default function Layout() {
           ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
-        {/* Logo */}
+        {/* Logo - click to dashboard */}
         <div className="p-6">
-          <div className="flex items-center gap-3">
-            <Logo className="w-10 h-10" />
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
+            <Logo className="w-12 h-12" />
             <h1 className="text-2xl font-bold tracking-tighter text-text-primary">
               Lan Anh
             </h1>
-          </div>
+          </button>
         </div>
 
         {/* Navigation */}
@@ -115,17 +122,26 @@ export default function Layout() {
 
         {/* Bottom actions */}
         <div className="p-4 border-t border-border space-y-1">
-          <button
-            type="button"
-            className="flex w-full items-center rounded-full px-4 py-3 text-sm font-medium text-text-secondary transition-colors hover:bg-background"
+          <Link
+            to="/profile"
+            onClick={() => setIsSidebarOpen(false)}
+            className={`
+              relative flex w-full items-center rounded-full px-4 py-3 text-sm font-medium transition-colors
+              ${location.pathname === '/profile'
+                ? 'bg-primary/20 text-text-primary'
+                : 'text-text-secondary hover:bg-background'}
+            `}
           >
-            <Settings className="mr-3 h-5 w-5" />
-            Settings
-          </button>
+            {location.pathname === '/profile' && (
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary rounded-r-full" />
+            )}
+            <Settings className={`mr-3 h-5 w-5 ${location.pathname === '/profile' ? 'text-text-primary' : 'text-text-secondary'}`} />
+            Profile Settings
+          </Link>
           <button
             type="button"
             onClick={handleLogout}
-            className="flex w-full items-center rounded-full px-4 py-3 text-sm font-medium text-text-secondary transition-colors hover:bg-background"
+            className="flex w-full items-center rounded-full px-4 py-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
           >
             <LogOut className="mr-3 h-5 w-5" />
             Logout
@@ -147,10 +163,14 @@ export default function Layout() {
               >
                 <Menu className="w-5 h-5 text-text-primary" />
               </button>
-              <div className="flex items-center gap-2">
-                <Logo className="w-8 h-8" />
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              >
+                <Logo className="w-9 h-9" />
                 <span className="text-lg font-bold text-text-primary">Lan Anh</span>
-              </div>
+              </button>
             </div>
 
             <div className="hidden lg:block flex-1 min-w-0" aria-hidden="true" />
