@@ -192,7 +192,8 @@ export const login = async (req: Request, res: Response) => {
       }
 
       // Second step: verify TOTP
-      const isValid = verify({ token: otp, secret: user.two_factor_secret || '' });      if (!isValid) {
+      const totpResult = await verify({ token: otp, secret: user.two_factor_secret || '' });
+      if (!totpResult.valid) {
         return res.status(401).json({
           success: false,
           requires2FA: true,
@@ -629,23 +630,21 @@ export const verifyLoginOTP = async (req: Request, res: Response) => {
     }
 
     // Verify TOTP — must pass this gate before any success response
-    let isValid = false;
     try {
-      isValid = verify({ token: otp, secret: user.two_factor_secret });
+      const result = await verify({ token: otp, secret: user.two_factor_secret });
+      if (!result.valid) {
+        return res.status(401).json({
+          success: false,
+          requires2FA: true,
+          message: 'Invalid code. Please check your authenticator app.',
+        });
+      }
     } catch (verifyErr: any) {
       console.error('[2FA] TOTP verify threw:', verifyErr.message);
       return res.status(401).json({
         success: false,
         requires2FA: true,
         message: 'Verification error. Please try again.',
-      });
-    }
-
-    if (!isValid) {
-      return res.status(401).json({
-        success: false,
-        requires2FA: true,
-        message: 'Invalid code. Please check your authenticator app.',
       });
     }
 
