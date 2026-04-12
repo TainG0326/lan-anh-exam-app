@@ -13,6 +13,12 @@ CREATE TABLE IF NOT EXISTS users (
   role VARCHAR(20) CHECK (role IN ('teacher', 'student')) NOT NULL,
   student_id VARCHAR(50),
   class_id UUID,
+  avatar_url TEXT,
+  phone VARCHAR(20),
+  date_of_birth DATE,
+  two_factor_enabled BOOLEAN DEFAULT FALSE,
+  two_factor_secret TEXT,
+  two_factor_verified BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
