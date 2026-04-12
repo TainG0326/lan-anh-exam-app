@@ -237,8 +237,10 @@ export const login = async (req: Request, res: Response) => {
     if (user.two_factor_enabled && user.two_factor_verified) {
       // Trusted device check: bypass 2FA if valid token exists
       const deviceToken = getTrustedDeviceToken(req);
+      console.log(`[LOGIN] 2FA user: ${user.email}, deviceToken present: ${!!deviceToken}`);
       if (deviceToken) {
         const trustedDevice = await TrustedDeviceDB.findValidDevice(user.id, deviceToken);
+        console.log(`[LOGIN] findValidDevice result: ${trustedDevice ? 'FOUND (bypass 2FA)' : 'NOT FOUND (require 2FA)'}`);
         if (trustedDevice) {
           await TrustedDeviceDB.updateLastUsed(trustedDevice.id);
           // Bypass 2FA - trusted device
