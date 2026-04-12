@@ -21,6 +21,7 @@ export const TrustedDeviceDB = {
     if (!rawToken) return null;
 
     const tokenHash = this.hashToken(rawToken);
+    console.log(`[TrustedDevice] findValidDevice: userId=${userId}, rawToken=${rawToken.substring(0, 8)}..., hash=${tokenHash.substring(0, 8)}...`);
     const now = new Date().toISOString();
 
     const { data, error } = await supabase
@@ -31,7 +32,11 @@ export const TrustedDeviceDB = {
       .gt('expires_at', now)
       .single();
 
-    if (error || !data) return null;
+    if (error || !data) {
+      console.log(`[TrustedDevice] findValidDevice: NOT FOUND (error: ${error?.message || 'no data'})`);
+      return null;
+    }
+    console.log(`[TrustedDevice] findValidDevice: FOUND, id=${data.id}, expires_at=${data.expires_at}`);
     return data as TrustedDevice;
   },
 
@@ -64,6 +69,7 @@ export const TrustedDeviceDB = {
       .single();
 
     if (error) throw error;
+    console.log(`[TrustedDevice] Created: id=${inserted.id}, user_id=${inserted.user_id}, expires_at=${inserted.expires_at}`);
     return inserted as TrustedDevice;
   },
 

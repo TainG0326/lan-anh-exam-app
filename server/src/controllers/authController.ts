@@ -918,11 +918,12 @@ export const googleLogin = async (req: Request, res: Response) => {
     }
 
     // ===== 2FA CHECK: Google OAuth must respect 2FA requirement =====
+    console.log(`[googleLogin] REQUIRE_2FA env: "${process.env.REQUIRE_2FA}", user.role: ${user.role}, two_factor_enabled: ${user.two_factor_enabled}, two_factor_verified: ${user.two_factor_verified}`);
     if (user.role === 'teacher' && process.env.REQUIRE_2FA === 'true') {
       if (user.two_factor_enabled && user.two_factor_verified) {
         // Trusted device check: bypass 2FA if valid token exists
         const deviceToken = getTrustedDeviceToken(req);
-        console.log(`[googleLogin] 2FA user: ${user.email}, deviceToken present: ${!!deviceToken}`);
+        console.log(`[googleLogin] 2FA user: ${user.email}, deviceToken present: ${!!deviceToken}, token value: ${deviceToken ? deviceToken.substring(0, 8) + '...' : 'none'}`);
         if (deviceToken) {
           const trustedDevice = await TrustedDeviceDB.findValidDevice(user.id, deviceToken);
           console.log(`[googleLogin] findValidDevice result: ${trustedDevice ? 'FOUND (bypass 2FA)' : 'NOT FOUND (require 2FA)'}`);
