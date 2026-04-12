@@ -66,6 +66,19 @@ const successfulLoginWithDevice = async (
     ipAddress,
     daysValid: TRUSTED_DEVICE_DAYS,
   });
+
+  // Set HttpOnly cookie for cross-origin trusted device bypass
+  const isProduction = process.env.NODE_ENV === 'production';
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + TRUSTED_DEVICE_DAYS);
+  res.cookie(TRUSTED_DEVICE_KEY, rawToken, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    expires: expiresAt,
+    path: '/',
+  });
+
   return rawToken; // Return token for client to store
 };
 
