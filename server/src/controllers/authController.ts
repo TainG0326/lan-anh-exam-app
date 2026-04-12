@@ -222,6 +222,8 @@ export const register = async (req: Request, res: Response) => {
         name: user.name,
         role: user.role,
         avatarUrl: user.avatar_url || null,
+        phone: user.phone || null,
+        dateOfBirth: user.date_of_birth || null,
       },
     });
   } catch (error: any) {
@@ -296,6 +298,8 @@ export const login = async (req: Request, res: Response) => {
               role: user.role,
               classId: user.class_id,
               avatarUrl: user.avatar_url || null,
+              phone: user.phone || null,
+              dateOfBirth: user.date_of_birth || null,
               two_factor_enabled: true,
             },
           });
@@ -386,6 +390,8 @@ export const login = async (req: Request, res: Response) => {
         role: user.role,
         classId: user.class_id,
         avatarUrl: user.avatar_url || null,
+        phone: user.phone || null,
+        dateOfBirth: user.date_of_birth || null,
         two_factor_enabled: user.two_factor_enabled || false,
       },
     });
@@ -1113,6 +1119,8 @@ export const googleLogin = async (req: Request, res: Response) => {
         role: user.role,
         classId: user.class_id,
         avatarUrl: user.avatar_url || null,
+        phone: user.phone || null,
+        dateOfBirth: user.date_of_birth || null,
         two_factor_enabled: user.two_factor_enabled || false,
       },
     });
