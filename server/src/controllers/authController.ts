@@ -33,9 +33,18 @@ const getTrustedDeviceTokenFromHeader = (req: Request): string | undefined => {
 const getTrustedDeviceToken = (req: Request): string | undefined => {
   // Ưu tiên đọc từ header (cross-origin reliable)
   const headerToken = getTrustedDeviceTokenFromHeader(req);
-  if (headerToken) return headerToken;
+  if (headerToken) {
+    console.log(`[getTrustedDeviceToken] Found in header: ${headerToken.substring(0, 8)}...`);
+    return headerToken;
+  }
   // Fallback: đọc từ cookie
-  return req.cookies?.[TRUSTED_DEVICE_KEY];
+  const cookieToken = req.cookies?.[TRUSTED_DEVICE_KEY];
+  if (cookieToken) {
+    console.log(`[getTrustedDeviceToken] Found in cookie: ${cookieToken.substring(0, 8)}...`);
+  } else {
+    console.log(`[getTrustedDeviceToken] No token found in header or cookie. Header keys: ${Object.keys(req.headers).join(', ')}`);
+  }
+  return cookieToken;
 };
 
 const generateDeviceToken = (): string => {
