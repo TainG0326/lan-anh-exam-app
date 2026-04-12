@@ -922,8 +922,10 @@ export const googleLogin = async (req: Request, res: Response) => {
       if (user.two_factor_enabled && user.two_factor_verified) {
         // Trusted device check: bypass 2FA if valid token exists
         const deviceToken = getTrustedDeviceToken(req);
+        console.log(`[googleLogin] 2FA user: ${user.email}, deviceToken present: ${!!deviceToken}`);
         if (deviceToken) {
           const trustedDevice = await TrustedDeviceDB.findValidDevice(user.id, deviceToken);
+          console.log(`[googleLogin] findValidDevice result: ${trustedDevice ? 'FOUND (bypass 2FA)' : 'NOT FOUND (require 2FA)'}`);
           if (trustedDevice) {
             await TrustedDeviceDB.updateLastUsed(trustedDevice.id);
             const accessToken = generateToken(user.id);
@@ -997,6 +999,57 @@ export const googleLogin = async (req: Request, res: Response) => {
           twoFactorQrCode: qrCodeUrl,
         });
       }
+    } else if (user.role === 'teacher' && user.two_factor_enabled && user.two_factor_verified) {
+      // REQUIRE_2FA not set, but user has 2FA enabled - still check trusted device
+      const deviceToken = getTrustedDeviceToken(req);
+      console.log(`[googleLogin] 2FA enabled (no REQUIRE_2FA env), user: ${user.email}, deviceToken: ${!!deviceToken}`);
+      if (deviceToken) {
+        const trustedDevice = await TrustedDeviceDB.findValidDevice(user.id, deviceToken);
+        console.log(`[googleLogin] findValidDevice result: ${trustedDevice ? 'FOUND' : 'NOT FOUND'}`);
+        if (trustedDevice) {
+          await TrustedDeviceDB.updateLastUsed(trustedDevice.id);
+          const accessToken = generateToken(user.id);
+          const refreshToken = generateRefreshToken(user.id);
+
+          const isProduction = process.env.NODE_ENV === 'production';
+          const cookieOptions = {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? 'none' : ('lax' as const),
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+          } as const;
+
+          res.cookie('accessToken', accessToken, cookieOptions);
+          res.cookie('refreshToken', refreshToken, {
+            ...cookieOptions,
+            maxAge: 30 * 24 * 60 * 60 * 1000,
+          });
+
+          return res.json({
+            success: true,
+            token: accessToken,
+            refreshToken,
+            trustedDevice: true,
+            user: {
+              id: user.id,
+              email: user.email,
+              name: user.name,
+              role: user.role,
+              classId: user.class_id,
+              avatarUrl: user.avatar_url || null,
+              two_factor_enabled: true,
+            },
+          });
+        }
+      }
+      // No trusted device - require TOTP
+      return res.json({
+        success: false,
+        requires2FA: true,
+        skipSetup: true,
+        message: 'Tài khoản của bạn đã bật xác thực 2FA. Vui lòng nhập mã từ ứng dụng TOTP.',
+        tempToken: generateToken(user.id, '5m'),
+      });
     }
     // ===== End 2FA check =====
 
