@@ -531,6 +531,9 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
     const { name, email, password, currentPassword, avatar_url, phone, date_of_birth } = req.body;
     const userId = req.user?.id;
 
+    console.log(`[updateProfile] Request body:`, JSON.stringify({ name, email, avatar_url: !!avatar_url, phone: !!phone, date_of_birth: !!date_of_birth }));
+    console.log(`[updateProfile] userId from token:`, userId);
+
     if (!userId) {
       return res.status(401).json({
         success: false,
@@ -539,6 +542,7 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
     }
 
     const user = await UserDB.findById(userId);
+    console.log(`[updateProfile] User from DB:`, user ? { id: user.id, email: user.email } : 'NOT FOUND');
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -592,21 +596,30 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
     if (phone !== undefined) updateData.phone = phone;
     if (date_of_birth !== undefined) updateData.date_of_birth = date_of_birth;
 
-    const updatedUser = await UserDB.update(userId, updateData);
+    console.log(`[updateProfile] updateData fields:`, Object.keys(updateData));
 
-    // Re-fetch from DB to ensure fresh data is returned (Supabase update().select() may return stale data)
-    const freshUser = await UserDB.findById(userId);
+    let updatedUser: any;
+    try {
+      updatedUser = await UserDB.update(userId, updateData);
+      console.log(`[updateProfile] UserDB.update result:`, { id: updatedUser.id, avatar_url: updatedUser.avatar_url, phone: updatedUser.phone });
+    } catch (updateError: any) {
+      console.error(`[updateProfile] UserDB.update FAILED:`, updateError.message);
+      throw updateError;
+    }
+
+    // Re-fetch from DB to ensure fresh data is returned
+    let freshUser: any;
+    try {
+      freshUser = await UserDB.findById(userId);
+      console.log(`[updateProfile] UserDB.findById result:`, { id: freshUser?.id, avatar_url: freshUser?.avatar_url, phone: freshUser?.phone });
+    } catch (findError: any) {
+      console.error(`[updateProfile] UserDB.findById FAILED:`, findError.message);
+      // If re-fetch fails, use the update result
+      freshUser = null;
+    }
 
     // Fallback: if re-fetch fails, use the updated user from the update response
     const userToReturn = freshUser || updatedUser;
-
-    // Debug: Log what was actually updated
-    console.log(`[updateProfile] User ${userId} after update:`, {
-      name: userToReturn.name,
-      avatar_url: userToReturn.avatar_url,
-      phone: userToReturn.phone,
-      date_of_birth: userToReturn.date_of_birth,
-    });
 
     res.json({
       success: true,
