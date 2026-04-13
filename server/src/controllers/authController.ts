@@ -604,7 +604,11 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
       }
       updateData.avatar_url = avatar_url;
     }
-    if (phone !== undefined) updateData.phone = phone;
+    if (phone !== undefined) {
+      // Ensure phone is a string, not boolean, and truncate to 20 chars
+      const phoneStr = String(phone || '').trim();
+      updateData.phone = phoneStr || null;
+    }
     if (date_of_birth !== undefined) updateData.date_of_birth = date_of_birth;
 
     console.log(`[updateProfile] updateData fields:`, Object.keys(updateData));
