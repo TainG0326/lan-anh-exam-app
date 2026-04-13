@@ -126,13 +126,12 @@ export default function Profile() {
     // Extract prefix from stored phone, deduplicate if needed
     const storedPhone = user.phone || '';
     // Extract phone digits: handle both corrupted and normal phones
-    // Strategy: if stored phone > 15 chars, it's corrupted (digits were duplicated) → take LAST 10 digits
-    //            if stored phone ≤ 15 chars, it's normal → take first 10 digits after country code
-    // e.g., "+8409787803380978780" (19) → allDigits="8409787803380978780" → last 10 = "0978780338"
-    // e.g., "+840978780338" (12) → allDigits="840978780338" → last 10 = "0978780338" ✓
-    // e.g., "+840987654321" (12) → allDigits="840987654321" → last 10 = "0987654321" ✓
-    const allDigits = storedPhone.replace(/\D/g, '');
-    digits = allDigits.slice(-10);
+    // Strategy: always take the LAST 10 digits of the full phone string
+    // This works because in both normal and corrupted phones, the actual 10-digit number is at the end
+    // e.g., "+8409787803380978780" (19) → "0978780338" (last 10)
+    // e.g., "+840978780338" (12) → "0978780338" (last 10) ✓
+    // e.g., "+840987654321" (12) → "0987654321" (last 10) ✓
+    let digits = storedPhone.replace(/\D/g, '').slice(-10);
 
     // If digits look duplicated, try all possible lengths to find the repeated pattern
     for (let digitLen = digits.length - 1; digitLen >= 9; digitLen--) {
