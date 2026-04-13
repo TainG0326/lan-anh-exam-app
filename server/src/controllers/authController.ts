@@ -972,7 +972,7 @@ export const request2FA = async (req: Request, res: Response) => {
 // ============================================================
 export const googleLogin = async (req: Request, res: Response) => {
   try {
-    const { email, name, avatarUrl, rememberDevice = false } = req.body;
+    const { email, name, avatarUrl, role: requestedRole, rememberDevice = false } = req.body;
 
     if (!email) {
       return res.status(400).json({
@@ -981,24 +981,31 @@ export const googleLogin = async (req: Request, res: Response) => {
       });
     }
 
-    const whitelistCheck = await checkWhitelist(email, 'teacher');
-    if (!whitelistCheck.allowed) {
-      return res.status(403).json({
-        success: false,
-        message: whitelistCheck.message,
-      });
+    // Use requested role, default to teacher for backward compatibility
+    const role = requestedRole || 'teacher';
+
+    // For teachers, check whitelist. Students don't need whitelist - anyone can sign up with Google
+    if (role === 'teacher') {
+      const whitelistCheck = await checkWhitelist(email, 'teacher');
+      if (!whitelistCheck.allowed) {
+        return res.status(403).json({
+          success: false,
+          message: whitelistCheck.message,
+        });
+      }
     }
 
     let user = await UserDB.findByEmail(email);
 
     if (!user) {
+      // Create new user with the requested role (teacher or student)
       user = await UserDB.create({
         email,
-        name: name || 'Teacher',
-        role: 'teacher',
+        name: name || (role === 'student' ? 'Student' : 'Teacher'),
+        role: role,
         avatar_url: avatarUrl || undefined,
       });
-    } else if (avatarUrl && user.role === 'teacher' && !user.avatar_url) {
+    } else if (avatarUrl && !user.avatar_url) {
       // Only set Google avatar if user has no existing avatar
       user = await UserDB.update(user.id, { avatar_url: avatarUrl });
     }
