@@ -486,19 +486,29 @@ export const uploadAvatar = async (req: AuthRequest, res: Response) => {
     // Update user with new avatar URL
     const updatedUser = await UserDB.update(userId, { avatar_url: avatarUrl });
 
+    // Re-fetch to ensure we have the latest data from DB
+    const freshUser = await UserDB.findById(userId);
+
+    // Debug: Log what was returned after upload
+    console.log(`[uploadAvatar] User ${userId} after avatar update:`, {
+      avatar_url: freshUser?.avatar_url,
+      phone: freshUser?.phone,
+      date_of_birth: freshUser?.date_of_birth,
+    });
+
     res.json({
       success: true,
-      avatarUrl: updatedUser.avatar_url,
+      avatarUrl: freshUser?.avatar_url || null,
       user: {
-        id: updatedUser.id,
-        email: updatedUser.email,
-        name: updatedUser.name,
-        role: updatedUser.role,
-        classId: updatedUser.class_id,
-        studentId: (updatedUser as any).student_id,
-        avatarUrl: updatedUser.avatar_url || null,
-        phone: updatedUser.phone || null,
-        dateOfBirth: updatedUser.date_of_birth || null,
+        id: freshUser!.id,
+        email: freshUser!.email,
+        name: freshUser!.name,
+        role: freshUser!.role,
+        classId: freshUser!.class_id,
+        studentId: (freshUser as any).student_id,
+        avatarUrl: freshUser!.avatar_url || null,
+        phone: freshUser!.phone || null,
+        dateOfBirth: freshUser!.date_of_birth || null,
       },
     });
   } catch (error: any) {
@@ -581,18 +591,29 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
 
     const updatedUser = await UserDB.update(userId, updateData);
 
+    // Re-fetch from DB to ensure fresh data is returned (Supabase update().select() may return stale data)
+    const freshUser = await UserDB.findById(userId);
+
+    // Debug: Log what was actually updated
+    console.log(`[updateProfile] User ${userId} after update:`, {
+      name: freshUser?.name,
+      avatar_url: freshUser?.avatar_url,
+      phone: freshUser?.phone,
+      date_of_birth: freshUser?.date_of_birth,
+    });
+
     res.json({
       success: true,
       user: {
-        id: updatedUser.id,
-        email: updatedUser.email,
-        name: updatedUser.name,
-        role: updatedUser.role,
-        classId: updatedUser.class_id,
-        studentId: (updatedUser as any).student_id,
-        avatarUrl: updatedUser.avatar_url || null,
-        phone: updatedUser.phone || null,
-        dateOfBirth: updatedUser.date_of_birth || null,
+        id: freshUser!.id,
+        email: freshUser!.email,
+        name: freshUser!.name,
+        role: freshUser!.role,
+        classId: freshUser!.class_id,
+        studentId: (freshUser as any).student_id,
+        avatarUrl: freshUser!.avatar_url || null,
+        phone: freshUser!.phone || null,
+        dateOfBirth: freshUser!.date_of_birth || null,
       },
     });
   } catch (error: any) {
