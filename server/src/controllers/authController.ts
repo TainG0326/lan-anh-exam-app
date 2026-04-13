@@ -998,7 +998,8 @@ export const googleLogin = async (req: Request, res: Response) => {
         role: 'teacher',
         avatar_url: avatarUrl || undefined,
       });
-    } else if (avatarUrl && user.role === 'teacher') {
+    } else if (avatarUrl && user.role === 'teacher' && !user.avatar_url) {
+      // Only set Google avatar if user has no existing avatar
       user = await UserDB.update(user.id, { avatar_url: avatarUrl });
     }
 
