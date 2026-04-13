@@ -1,11 +1,13 @@
 import express from 'express';
-import { register, login, getMe, updateProfile, uploadAvatar, forgotPassword, resetPassword, verifyLoginOTP, request2FA, manageWhitelist, listWhitelist, googleLogin, revokeTrustedDevices } from '../controllers/authController.js';
+import { register, login, getMe, updateProfile, uploadAvatar, forgotPassword, resetPassword, verifyLoginOTP, request2FA, manageWhitelist, listWhitelist, googleLogin, revokeTrustedDevices, sendRegisterOTP, verifyRegisterOTP } from '../controllers/authController.js';
 import { protect, authorize } from '../middleware/auth.js';
 import { avatarUploadMiddleware } from '../utils/avatarUpload.js';
 
 const router = express.Router();
 
 router.post('/register', register);
+router.post('/register/send-otp', sendRegisterOTP);
+router.post('/register/verify-otp', verifyRegisterOTP);
 router.post('/login', login);
 router.post('/google-login', googleLogin);
 router.post('/verify-login-otp', verifyLoginOTP);

@@ -5,7 +5,7 @@ export interface AuthOTP {
   user_id: string;
   email: string;
   otp_code: string;
-  otp_type: 'login' | 'reset';
+  otp_type: 'login' | 'reset' | 'register';
   expires_at: string;
   verified: boolean;
   attempts: number;
@@ -64,7 +64,7 @@ export const OTPService = {
     return otp;
   },
 
-  // Create OTP for password reset
+    // Create OTP for password reset
   async createResetOTP(userId: string, email: string): Promise<string> {
     const otp = this.generateOTP();
     const expiresAt = new Date(Date.now() + OTP_EXPIRATION).toISOString();
@@ -102,8 +102,46 @@ export const OTPService = {
     return otp;
   },
 
+  // Create OTP for registration email verification
+  async createRegisterOTP(userId: string, email: string): Promise<string> {
+    const otp = this.generateOTP();
+    const expiresAt = new Date(Date.now() + OTP_EXPIRATION).toISOString();
+
+    const otpEntry: AuthOTP = {
+      id: `otp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      user_id: userId,
+      email: email.toLowerCase(),
+      otp_code: otp,
+      otp_type: 'register',
+      expires_at: expiresAt,
+      verified: false,
+      attempts: 0,
+      created_at: new Date().toISOString(),
+    };
+
+    // Store in memory
+    otpMemoryStore.set(email.toLowerCase(), otpEntry);
+
+    // Also store in DB
+    try {
+      await supabase.from('auth_otp').insert({
+        user_id: userId,
+        email: email.toLowerCase(),
+        otp_code: otp,
+        otp_type: 'register',
+        expires_at: expiresAt,
+        verified: false,
+        attempts: 0,
+      });
+    } catch (err) {
+      console.error('Failed to store OTP in DB:', err);
+    }
+
+    return otp;
+  },
+
   // Verify OTP
-  async verifyOTP(email: string, otp: string, type: 'login' | 'reset'): Promise<{ valid: boolean; userId?: string; error?: string }> {
+  async verifyOTP(email: string, otp: string, type: 'login' | 'reset' | 'register'): Promise<{ valid: boolean; userId?: string; error?: string }> {
     const normalizedEmail = email.toLowerCase();
     const otpEntry = otpMemoryStore.get(normalizedEmail);
 

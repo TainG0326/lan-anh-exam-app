@@ -1192,6 +1192,185 @@ export const googleLogin = async (req: Request, res: Response) => {
 };
 
 // ============================================================
+// STUDENT SIGN UP WITH EMAIL VERIFICATION
+// ============================================================
+
+// Step 1: Send OTP to email for registration
+export const sendRegisterOTP = async (req: Request, res: Response) => {
+  try {
+    const { email, name, password } = req.body;
+
+    if (!email || !name || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email, tên và mật khẩu là bắt buộc.',
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mật khẩu phải có ít nhất 6 ký tự.',
+      });
+    }
+
+    // Check if email already registered
+    const existingUser = await UserDB.findByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email này đã được đăng ký. Vui lòng đăng nhập hoặc sử dụng email khác.',
+      });
+    }
+
+    // Create temporary user record with pending status
+    const tempUserId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Store temp registration data (we'll use sessionStorage-like approach with a map)
+    // For simplicity, we'll store in memory (in production, use Redis or DB)
+    (global as any).__pendingRegistrations = (global as any).__pendingRegistrations || new Map();
+    (global as any).__pendingRegistrations.set(email.toLowerCase(), {
+      email: email.toLowerCase(),
+      name,
+      password,
+      role: 'student',
+      createdAt: Date.now(),
+    });
+
+    // Create OTP for registration
+    const otp = await OTPService.createRegisterOTP(tempUserId, email);
+
+    // Send OTP email
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    if (!process.env.RESEND_API_KEY) {
+      console.error('[OTP] RESEND_API_KEY is not set!');
+      return res.status(500).json({
+        success: false,
+        message: 'Email service not configured. Please try again later.',
+      });
+    }
+
+    await resend.emails.send({
+      from: 'English Exam <onboarding@resend.dev>',
+      to: email,
+      subject: 'Mã xác nhận đăng ký - Lan Anh English',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #5F8D78;">Lan Anh English</h2>
+          <p>Xin chào <strong>${name}</strong>,</p>
+          <p>Cảm ơn bạn đã đăng ký tài khoản học sinh tại Lan Anh English.</p>
+          <p>Dưới đây là mã xác nhận của bạn:</p>
+          <div style="background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 32px; letter-spacing: 8px; font-weight: bold; margin: 20px 0;">
+            ${otp}
+          </div>
+          <p>Mã này có hiệu lực trong <strong>5 phút</strong>.</p>
+          <p>Nếu bạn không đăng ký tài khoản này, vui lòng bỏ qua email này.</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+          <p style="color: #888; font-size: 12px;">English Exam System - Hệ thống học tập và thi online</p>
+        </div>
+      `,
+    });
+
+    res.json({
+      success: true,
+      message: 'Mã xác nhận đã được gửi đến email của bạn!',
+    });
+  } catch (error: any) {
+    console.error('[Register] sendRegisterOTP error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to send OTP. Please try again.',
+    });
+  }
+};
+
+// Step 2: Verify OTP and complete registration
+export const verifyRegisterOTP = async (req: Request, res: Response) => {
+  try {
+    const { email, otp, name, password } = req.body;
+
+    if (!email || !otp || !name || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng điền đầy đủ thông tin.',
+      });
+    }
+
+    // Verify OTP
+    const otpResult = await OTPService.verifyOTP(email, otp, 'register');
+    if (!otpResult.valid) {
+      return res.status(400).json({
+        success: false,
+        message: otpResult.error || 'Mã OTP không hợp lệ.',
+      });
+    }
+
+    // Check if email already exists
+    const existingUser = await UserDB.findByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email này đã được đăng ký.',
+      });
+    }
+
+    // Create the actual user
+    const user = await UserDB.create({
+      email: email.toLowerCase(),
+      password,
+      name,
+      role: 'student',
+    });
+
+    // Clear OTP after successful verification
+    OTPService.clearOTP(email);
+
+    // Clear pending registration
+    if ((global as any).__pendingRegistrations) {
+      (global as any).__pendingRegistrations.delete(email.toLowerCase());
+    }
+
+    const accessToken = generateToken(user.id);
+    const refreshToken = generateRefreshToken(user.id);
+
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieOptions = {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : ('lax' as const),
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    } as const;
+
+    res.cookie('accessToken', accessToken, cookieOptions);
+    res.cookie('refreshToken', refreshToken, {
+      ...cookieOptions,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
+    res.status(201).json({
+      success: true,
+      token: accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        avatarUrl: user.avatar_url || null,
+        phone: user.phone || null,
+      },
+    });
+  } catch (error: any) {
+    console.error('[Register] verifyRegisterOTP error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Xác thực thất bại. Vui lòng thử lại.',
+    });
+  }
+};
+
+// ============================================================
 // WHITELIST MANAGEMENT (Admin only)
 // ============================================================
 export const listWhitelist = async (req: AuthRequest, res: Response) => {
