@@ -28,6 +28,7 @@ const PORT = parseListenPort();
  * Dùng origin: true (phản chiếu Origin) + credentials — tránh lỗi preflight thiếu ACAO khi whitelist lệch ký tự / bản deploy cũ.
  * Chỉ cho phép origin hợp lệ (localhost, *.vercel.app, danh sách cố định).
  */
+// Updated: Added student-web-sigma.vercel.app for student registration
 function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true;
   const fixed = [
