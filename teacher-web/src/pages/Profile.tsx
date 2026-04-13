@@ -18,6 +18,7 @@ import {
   Bell,
   BellOff,
   Phone,
+  ChevronDown,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import LanguageSwitcher from '../components/LanguageSwitcher';
@@ -63,12 +64,15 @@ export default function Profile() {
     name: '',
     email: '',
     phone: '',
-    dateOfBirth: '',
+    phonePrefix: '+84',
     address: '',
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
   });
+  const [dobDay, setDobDay] = useState('');
+  const [dobMonth, setDobMonth] = useState('');
+  const [dobYear, setDobYear] = useState('');
 
   useEffect(() => {
     let joined = localStorage.getItem('teacher-member-since');
@@ -83,14 +87,63 @@ export default function Profile() {
     setMemberSince(joined);
   }, []);
 
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 60 }, (_, i) => currentYear - 18 - i);
+
+  // Generate day options once (static)
+  const dayOptions = Array.from({ length: 31 }, (_, i) => i + 1);
+
+  // Helper to get selected day (read from state, fallback to parsed user date)
+  const getSelectedDay = () => {
+    if (dobDay) return dobDay;
+    if (user?.dateOfBirth) {
+      const parts = user.dateOfBirth.split('-');
+      return parts[2] || '';
+    }
+    return '';
+  };
+
+  const getSelectedMonth = () => {
+    if (dobMonth) return dobMonth;
+    if (user?.dateOfBirth) {
+      const parts = user.dateOfBirth.split('-');
+      return parts[1] || '';
+    }
+    return '';
+  };
+
+  const getSelectedYear = () => {
+    if (dobYear) return dobYear;
+    if (user?.dateOfBirth) {
+      const parts = user.dateOfBirth.split('-');
+      return parts[0] || '';
+    }
+    return '';
+  };
+
   useEffect(() => {
     if (!user) return;
+    // Extract prefix from stored phone, deduplicate if needed
+    const storedPhone = user.phone || '';
+    let digits = storedPhone.replace(/^\+\d+/, '');
+
+    // If digits look duplicated (e.g. "0978780338978780338"), trim to first half
+    if (digits.length > 10 && digits.length % 2 === 0) {
+      const half = digits.length / 2;
+      if (digits.slice(0, half) === digits.slice(half)) {
+        digits = digits.slice(0, half);
+        console.warn('[Profile] Deduplicated stored phone digits:', digits);
+      }
+    }
+
+    const prefixMatch = storedPhone.match(/^(\+\d+)/);
+    const prefix = prefixMatch ? prefixMatch[1] : '+84';
     setFormData((prev) => ({
       ...prev,
       name: user.name || '',
       email: user.email || '',
-      phone: user.phone || '',
-      dateOfBirth: user.dateOfBirth || '',
+      phone: digits,
+      phonePrefix: prefix,
     }));
     if (user.avatarUrl) {
       const url = user.avatarUrl.startsWith('http')
@@ -172,15 +225,22 @@ export default function Profile() {
     e.preventDefault();
     setLoading(true);
     try {
+      // Validate: strip any already-duplicated suffix, keep only prefix+digits
+      let fullPhone: string | null = null;
+      if (formData.phone) {
+        const digits = formData.phone.replace(/\D/g, '').slice(0, 10);
+        fullPhone = `${formData.phonePrefix}${digits}`;
+      }
+      const dateOfBirth = dobYear && dobMonth && dobDay ? `${dobYear}-${dobMonth}-${dobDay}` : null;
       const response = await updateProfile({
         name: formData.name,
         email: formData.email,
-        phone: formData.phone || null,
-        dateOfBirth: formData.dateOfBirth || null,
+        phone: fullPhone,
+        dateOfBirth,
       });
       if (response.success) {
         setUser(response.user);
-        toast.success('Cập nhật thông tin thành công!');
+        toast.success('Profile updated successfully!');
       }
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } } };
@@ -434,30 +494,45 @@ export default function Profile() {
                     <label className="block text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-2">
                       Phone Number
                     </label>
-                    <div className="relative flex items-center rounded-xl border border-border bg-background-light overflow-hidden focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary transition-all">
-                      {/* Country Code Prefix */}
-                      <div className="flex items-center gap-1.5 px-3 py-3 bg-primary/5 border-r border-border">
-                        <span className="text-sm font-semibold text-text-primary leading-none select-none">+84</span>
-                        <span className="text-base leading-none" title="Vietnam">🇻🇳</span>
+                    <div className="flex items-center gap-2">
+                      {/* Country Code Selector */}
+                      <div className="relative w-32 shrink-0">
+                        <select
+                          className="w-full appearance-none rounded-xl border border-border bg-background-light pl-4 pr-8 py-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all cursor-pointer font-medium"
+                          value={formData.phonePrefix}
+                          onChange={(e) => setFormData((p) => ({ ...p, phonePrefix: e.target.value }))}
+                        >
+                          <option value="+84">🇻🇳 +84</option>
+                          <option value="+1">🇺🇸 +1</option>
+                          <option value="+44">🇬🇧 +44</option>
+                          <option value="+65">🇸🇬 +65</option>
+                          <option value="+66">🇹🇭 +66</option>
+                          <option value="+855">🇰🇭 +855</option>
+                          <option value="+856">🇱🇦 +856</option>
+                          <option value="+86">🇨🇳 +86</option>
+                          <option value="+82">🇰🇷 +82</option>
+                          <option value="+81">🇯🇵 +81</option>
+                          <option value="+61">🇦🇺 +61</option>
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
                       </div>
                       {/* Phone Icon */}
-                      <Phone className="ml-3 w-4 h-4 text-text-muted shrink-0" />
-                      {/* Phone Input */}
-                      <input
-                        type="tel"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        maxLength={10}
-                        className="flex-1 px-3 py-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none bg-transparent"
-                        value={formData.phone}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/\D/g, '');
-                          // Giới hạn 9-10 chữ số (không tính mã vùng +84)
-                          const limited = val.slice(0, 10);
-                          setFormData({ ...formData, phone: limited });
-                        }}
-                        placeholder="Nhập số điện thoại (9-10 số)"
-                      />
+                      <div className="relative flex-1">
+                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+                        <input
+                          type="tel"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={10}
+                          className="w-full rounded-xl border border-border bg-background-light pl-11 pr-4 py-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                          value={formData.phone}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, '');
+                            setFormData((p) => ({ ...p, phone: val.slice(0, 10) }));
+                          }}
+                          placeholder="Enter phone number"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -466,16 +541,62 @@ export default function Profile() {
                     <label className="block text-[11px] font-semibold uppercase tracking-wide text-text-muted mb-2">
                       Date of Birth
                     </label>
-                    <div className="relative">
-                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
-                      <input
-                        type="date"
-                        className="w-full rounded-xl border border-border bg-background-light pl-11 pr-4 py-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-4 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-                        value={formData.dateOfBirth}
-                        onChange={(e) =>
-                          setFormData({ ...formData, dateOfBirth: e.target.value })
-                        }
-                      />
+                    <div className="flex items-center gap-2">
+                      {/* Day */}
+                      <div className="relative flex-1 min-w-0">
+                        <select
+                          className="w-full appearance-none rounded-xl border border-border bg-background-light pl-4 pr-8 py-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all cursor-pointer"
+                          value={getSelectedDay()}
+                          onChange={(e) => setDobDay(e.target.value)}
+                        >
+                          <option value="">Day</option>
+                          {dayOptions.map((d) => (
+                            <option key={d} value={String(d).padStart(2, '0')}>{d}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+                      </div>
+                      {/* Month */}
+                      <div className="relative flex-1 min-w-0">
+                        <select
+                          className="w-full appearance-none rounded-xl border border-border bg-background-light pl-4 pr-8 py-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all cursor-pointer"
+                          value={getSelectedMonth()}
+                          onChange={(e) => setDobMonth(e.target.value)}
+                        >
+                          <option value="">Month</option>
+                          {[
+                            { value: '01', label: 'January' },
+                            { value: '02', label: 'February' },
+                            { value: '03', label: 'March' },
+                            { value: '04', label: 'April' },
+                            { value: '05', label: 'May' },
+                            { value: '06', label: 'June' },
+                            { value: '07', label: 'July' },
+                            { value: '08', label: 'August' },
+                            { value: '09', label: 'September' },
+                            { value: '10', label: 'October' },
+                            { value: '11', label: 'November' },
+                            { value: '12', label: 'December' },
+                          ].map((m) => (
+                            <option key={m.value} value={m.value}>{m.label}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+                      </div>
+                      {/* Year */}
+                      <div className="relative flex-1 min-w-0">
+                        <select
+                          className="w-full appearance-none rounded-xl border border-border bg-background-light pl-4 pr-8 py-3 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all cursor-pointer"
+                          value={getSelectedYear()}
+                          onChange={(e) => setDobYear(e.target.value)}
+                        >
+                          <option value="">Year</option>
+                          {years.map((y) => (
+                            <option key={y} value={y}>{y}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+                      </div>
                     </div>
                   </div>
 
@@ -675,7 +796,7 @@ export default function Profile() {
                       const next = !notificationsEnabled;
                       setNotificationsEnabled(next);
                       localStorage.setItem('teacher-notifications-enabled', String(next));
-                      toast.success(next ? 'Đã bật thông báo' : 'Đã tắt thông báo');
+                      toast.success(next ? 'Notifications enabled' : 'Notifications disabled');
                     }}
                     className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-2 ${
                       notificationsEnabled ? 'bg-primary' : 'bg-gray-300'
