@@ -489,26 +489,29 @@ export const uploadAvatar = async (req: AuthRequest, res: Response) => {
     // Re-fetch to ensure we have the latest data from DB
     const freshUser = await UserDB.findById(userId);
 
+    // Fallback: if re-fetch fails, use the updated user from the update response
+    const userToReturn = freshUser || updatedUser;
+
     // Debug: Log what was returned after upload
     console.log(`[uploadAvatar] User ${userId} after avatar update:`, {
-      avatar_url: freshUser?.avatar_url,
-      phone: freshUser?.phone,
-      date_of_birth: freshUser?.date_of_birth,
+      avatar_url: userToReturn.avatar_url,
+      phone: userToReturn.phone,
+      date_of_birth: userToReturn.date_of_birth,
     });
 
     res.json({
       success: true,
-      avatarUrl: freshUser?.avatar_url || null,
+      avatarUrl: userToReturn.avatar_url || null,
       user: {
-        id: freshUser!.id,
-        email: freshUser!.email,
-        name: freshUser!.name,
-        role: freshUser!.role,
-        classId: freshUser!.class_id,
-        studentId: (freshUser as any).student_id,
-        avatarUrl: freshUser!.avatar_url || null,
-        phone: freshUser!.phone || null,
-        dateOfBirth: freshUser!.date_of_birth || null,
+        id: userToReturn.id,
+        email: userToReturn.email,
+        name: userToReturn.name,
+        role: userToReturn.role,
+        classId: userToReturn.class_id,
+        studentId: (userToReturn as any).student_id,
+        avatarUrl: userToReturn.avatar_url || null,
+        phone: userToReturn.phone || null,
+        dateOfBirth: userToReturn.date_of_birth || null,
       },
     });
   } catch (error: any) {
@@ -594,26 +597,29 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
     // Re-fetch from DB to ensure fresh data is returned (Supabase update().select() may return stale data)
     const freshUser = await UserDB.findById(userId);
 
+    // Fallback: if re-fetch fails, use the updated user from the update response
+    const userToReturn = freshUser || updatedUser;
+
     // Debug: Log what was actually updated
     console.log(`[updateProfile] User ${userId} after update:`, {
-      name: freshUser?.name,
-      avatar_url: freshUser?.avatar_url,
-      phone: freshUser?.phone,
-      date_of_birth: freshUser?.date_of_birth,
+      name: userToReturn.name,
+      avatar_url: userToReturn.avatar_url,
+      phone: userToReturn.phone,
+      date_of_birth: userToReturn.date_of_birth,
     });
 
     res.json({
       success: true,
       user: {
-        id: freshUser!.id,
-        email: freshUser!.email,
-        name: freshUser!.name,
-        role: freshUser!.role,
-        classId: freshUser!.class_id,
-        studentId: (freshUser as any).student_id,
-        avatarUrl: freshUser!.avatar_url || null,
-        phone: freshUser!.phone || null,
-        dateOfBirth: freshUser!.date_of_birth || null,
+        id: userToReturn.id,
+        email: userToReturn.email,
+        name: userToReturn.name,
+        role: userToReturn.role,
+        classId: userToReturn.class_id,
+        studentId: (userToReturn as any).student_id,
+        avatarUrl: userToReturn.avatar_url || null,
+        phone: userToReturn.phone || null,
+        dateOfBirth: userToReturn.date_of_birth || null,
       },
     });
   } catch (error: any) {
