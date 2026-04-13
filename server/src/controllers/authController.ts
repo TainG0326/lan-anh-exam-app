@@ -611,7 +611,9 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
     }
     if (date_of_birth !== undefined) updateData.date_of_birth = date_of_birth;
 
+    console.log(`[updateProfile] updateData:`, JSON.stringify(updateData));
     console.log(`[updateProfile] updateData fields:`, Object.keys(updateData));
+    console.log(`[updateProfile] phone value:`, JSON.stringify(phone), 'type:', typeof phone);
 
     let updatedUser: any;
     try {

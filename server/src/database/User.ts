@@ -105,21 +105,31 @@ export const UserDB = {
     if (updateData.phone !== undefined && updateData.phone !== null) {
       let phoneStr = String(updateData.phone).trim();
 
-      // Detect and fix duplication: if phone looks like prefix+digits+digits, remove the duplicate tail
-      const prefixMatch = phoneStr.match(/^(\+\d+)(.+)$/);
-      if (prefixMatch) {
-        const [, prefix, rest] = prefixMatch;
-        const len = rest.length;
-        if (len % 2 === 0) {
-          const half = len / 2;
-          const first = rest.slice(0, half);
-          const second = rest.slice(half);
-          if (first === second) {
-            phoneStr = `${prefix}${first}`;
-            console.log(`[UserDB.update] Deduped phone: ${phoneStr}`);
+      // Detect and fix duplication: find if phone was prefix+digits+digits
+      // Try to split phone into prefix (country code) + rest, then check if rest is duplicated
+      // Try prefix lengths from 3 chars (e.g., +84) up to 5 chars (e.g., +1234)
+      let bestPhone = phoneStr;
+      outer:
+      for (let prefixLen = 3; prefixLen <= 5; prefixLen++) {
+        if (phoneStr.length < prefixLen) break;
+        const prefix = phoneStr.slice(0, prefixLen);
+        const rest = phoneStr.slice(prefixLen);
+        // Try all possible rest lengths (must be >= 9 for valid phone, and even for duplication)
+        for (let digitLen = rest.length - 1; digitLen >= 9; digitLen--) {
+          const candidate = rest.slice(0, digitLen);
+          if (candidate + candidate === rest) {
+            bestPhone = `${prefix}${candidate}`;
+            console.log(`[UserDB.update] Deduped phone (prefixLen=${prefixLen}, digitLen=${digitLen}): ${bestPhone}`);
+            break outer;
           }
         }
       }
+      // Fallback: if phone is suspiciously long (>13 chars for +84 phones), truncate to 13
+      if (bestPhone.length > 13 && bestPhone.startsWith('+84')) {
+        console.log(`[UserDB.update] Suspiciously long phone (${bestPhone.length} chars), truncating to 13`);
+        bestPhone = bestPhone.slice(0, 13);
+      }
+      phoneStr = bestPhone;
 
       // Final safety: truncate to 20 chars
       if (phoneStr.length > 20) {
