@@ -125,14 +125,33 @@ export default function Profile() {
     if (!user) return;
     // Extract prefix from stored phone, deduplicate if needed
     const storedPhone = user.phone || '';
-    let digits = storedPhone.replace(/^\+\d+/, '');
+    // Extract phone digits: handle both corrupted and normal phones
+    // Strategy: if stored phone > 15 chars, it's corrupted (digits were duplicated) → take LAST 10 digits
+    //            if stored phone ≤ 15 chars, it's normal → take first 10 digits after country code
+    // e.g., "+8409787803380978780" (19) → allDigits="8409787803380978780" → last 10 = "0978780338"
+    // e.g., "+840978780338" (12) → allDigits="840978780338" → last 10 = "0978780338" ✓
+    // e.g., "+840987654321" (12) → allDigits="840987654321" → last 10 = "0987654321" ✓
+    const allDigits = storedPhone.replace(/\D/g, '');
+    digits = allDigits.slice(-10);
 
-    // If digits look duplicated (e.g. "0978780338978780338"), trim to first half
-    if (digits.length > 10 && digits.length % 2 === 0) {
-      const half = digits.length / 2;
-      if (digits.slice(0, half) === digits.slice(half)) {
-        digits = digits.slice(0, half);
-        console.warn('[Profile] Deduplicated stored phone digits:', digits);
+    // If digits look duplicated, try all possible lengths to find the repeated pattern
+    for (let digitLen = digits.length - 1; digitLen >= 9; digitLen--) {
+      const candidate = digits.slice(0, digitLen);
+      if (candidate + candidate === digits) {
+        digits = candidate;
+        console.warn('[Profile] Deduplicated stored phone digits:', digits, '(original digitLen:', digitLen * 2, ')');
+        break;
+      }
+    }
+    // Fallback: if digits suspiciously long (>10) and no dedup pattern found, truncate to 10
+    if (digits.length > 10 && digits.length > 0) {
+      let found = false;
+      for (let dl = digits.length - 1; dl >= 9; dl--) {
+        if (digits.slice(0, dl) + digits.slice(0, dl) === digits) { found = true; break; }
+      }
+      if (!found) {
+        console.warn('[Profile] No dedup pattern found, truncating digits from', digits.length, 'to 10');
+        digits = digits.slice(0, 10);
       }
     }
     console.log('[Profile] useEffect - loading user, phone:', storedPhone, 'digits:', digits);
