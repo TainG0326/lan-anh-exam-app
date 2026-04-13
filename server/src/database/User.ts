@@ -97,12 +97,25 @@ export const UserDB = {
     if (updateData.name) updateFields.name = updateData.name;
     if (updateData.email) updateFields.email = updateData.email.toLowerCase();
     if (updateData.password) updateFields.password = updateData.password;
-    if (updateData.avatar_url !== undefined) updateFields.avatar_url = updateData.avatar_url;
-    if (updateData.phone !== undefined) updateFields.phone = updateData.phone;
-    if (updateData.date_of_birth !== undefined) updateFields.date_of_birth = updateData.date_of_birth;
+    // Normalize avatar_url: skip if falsy (false, null, empty) to avoid type errors
+    if (updateData.avatar_url && typeof updateData.avatar_url === 'string') {
+      updateFields.avatar_url = updateData.avatar_url;
+    }
+    // Normalize phone: ensure string, not boolean
+    if (updateData.phone !== undefined && updateData.phone !== null) {
+      const phoneStr = String(updateData.phone).trim();
+      updateFields.phone = phoneStr || null;
+    }
+    // Normalize date_of_birth: ensure string
+    if (updateData.date_of_birth !== undefined && updateData.date_of_birth !== null) {
+      const dobStr = String(updateData.date_of_birth).trim();
+      updateFields.date_of_birth = dobStr || null;
+    }
     if (updateData.two_factor_enabled !== undefined) updateFields.two_factor_enabled = updateData.two_factor_enabled;
     if (updateData.two_factor_verified !== undefined) updateFields.two_factor_verified = updateData.two_factor_verified;
     if (updateData.two_factor_secret !== undefined) updateFields.two_factor_secret = updateData.two_factor_secret;
+
+    console.log(`[UserDB.update] updateFields:`, JSON.stringify(updateFields));
 
     const { data, error } = await supabase
       .from('users')
