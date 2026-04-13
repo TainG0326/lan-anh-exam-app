@@ -541,7 +541,13 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    const user = await UserDB.findById(userId);
+    let user: any;
+    try {
+      user = await UserDB.findById(userId);
+    } catch (findErr: any) {
+      console.error(`[updateProfile] UserDB.findById(userId) FAILED:`, findErr.message);
+      return res.status(500).json({ success: false, message: 'Database error: ' + findErr.message });
+    }
     console.log(`[updateProfile] User from DB:`, user ? { id: user.id, email: user.email } : 'NOT FOUND');
     if (!user) {
       return res.status(404).json({
@@ -559,12 +565,17 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
         });
       }
 
-      const isPasswordValid = await UserDB.comparePassword(user.password!, currentPassword);
-      if (!isPasswordValid) {
-        return res.status(401).json({
-          success: false,
-          message: 'Current password is incorrect.',
-        });
+      try {
+        const isPasswordValid = await UserDB.comparePassword(user.password || '', currentPassword);
+        if (!isPasswordValid) {
+          return res.status(401).json({
+            success: false,
+            message: 'Current password is incorrect.',
+          });
+        }
+      } catch (pwdErr: any) {
+        console.error(`[updateProfile] comparePassword FAILED:`, pwdErr.message);
+        return res.status(500).json({ success: false, message: 'Password check error: ' + pwdErr.message });
       }
     }
 
