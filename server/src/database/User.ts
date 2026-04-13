@@ -101,9 +101,32 @@ export const UserDB = {
     if (updateData.avatar_url && typeof updateData.avatar_url === 'string') {
       updateFields.avatar_url = updateData.avatar_url;
     }
-    // Normalize phone: ensure string, not boolean
+    // Normalize phone: ensure string, deduplicate if prefix+digits was double-saved, truncate to 20
     if (updateData.phone !== undefined && updateData.phone !== null) {
-      const phoneStr = String(updateData.phone).trim();
+      let phoneStr = String(updateData.phone).trim();
+
+      // Detect and fix duplication: if phone looks like prefix+digits+digits, remove the duplicate tail
+      const prefixMatch = phoneStr.match(/^(\+\d+)(.+)$/);
+      if (prefixMatch) {
+        const [, prefix, rest] = prefixMatch;
+        const len = rest.length;
+        if (len % 2 === 0) {
+          const half = len / 2;
+          const first = rest.slice(0, half);
+          const second = rest.slice(half);
+          if (first === second) {
+            phoneStr = `${prefix}${first}`;
+            console.log(`[UserDB.update] Deduped phone: ${phoneStr}`);
+          }
+        }
+      }
+
+      // Final safety: truncate to 20 chars
+      if (phoneStr.length > 20) {
+        phoneStr = phoneStr.substring(0, 20);
+        console.log(`[UserDB.update] Truncated phone to 20 chars`);
+      }
+
       updateFields.phone = phoneStr || null;
     }
     // Normalize date_of_birth: ensure string
