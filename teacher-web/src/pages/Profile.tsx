@@ -135,7 +135,7 @@ export default function Profile() {
         console.warn('[Profile] Deduplicated stored phone digits:', digits);
       }
     }
-
+    console.log('[Profile] useEffect - loading user, phone:', storedPhone, 'digits:', digits);
     const prefixMatch = storedPhone.match(/^(\+\d+)/);
     const prefix = prefixMatch ? prefixMatch[1] : '+84';
     setFormData((prev) => ({
@@ -232,12 +232,14 @@ export default function Profile() {
         fullPhone = `${formData.phonePrefix}${digits}`;
       }
       const dateOfBirth = dobYear && dobMonth && dobDay ? `${dobYear}-${dobMonth}-${dobDay}` : null;
+      console.log('[Profile] handleSavePersonal - fullPhone:', fullPhone, 'dateOfBirth:', dateOfBirth);
       const response = await updateProfile({
         name: formData.name,
         email: formData.email,
         phone: fullPhone,
         dateOfBirth,
       });
+      console.log('[Profile] updateProfile response:', JSON.stringify(response));
       if (response.success) {
         setUser(response.user);
         toast.success('Profile updated successfully!');
