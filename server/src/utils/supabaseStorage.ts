@@ -40,25 +40,21 @@ export const uploadAvatarToSupabase = async (
   mimeType: string
 ): Promise<string> => {
   try {
-    // Generate unique filename
-    const timestamp = Date.now();
     const ext = fileName.split('.').pop() || 'jpg';
-    const uniqueFileName = `${userId}-${timestamp}.${ext}`;
+    const uniqueFileName = `${userId}-${Date.now()}.${ext}`;
     const filePath = `${uniqueFileName}`;
 
-    // Upload file
     const { data, error } = await supabase.storage
       .from(AVATAR_BUCKET)
       .upload(filePath, fileBuffer, {
         contentType: mimeType,
-        upsert: false, // Don't overwrite existing files
+        upsert: true,
       });
 
     if (error) {
       throw error;
     }
 
-    // Get public URL
     const { data: urlData } = supabase.storage
       .from(AVATAR_BUCKET)
       .getPublicUrl(filePath);
@@ -69,7 +65,6 @@ export const uploadAvatarToSupabase = async (
 
     return urlData.publicUrl;
   } catch (error: any) {
-    console.error('Failed to upload avatar to Supabase:', error);
     throw new Error(`Failed to upload avatar: ${error.message}`);
   }
 };
