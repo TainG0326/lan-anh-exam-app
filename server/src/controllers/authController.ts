@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { UserDB } from '../database/User.js';
-import { WhitelistDB } from '../database/Whitelist.js';
+import { WhitelistDB, TeacherWhitelistDB, StudentWhitelistDB } from '../database/Whitelist.js';
 import { TrustedDeviceDB } from '../database/TrustedDevice.js';
 import { OTPService } from '../services/otpService.js';
 import { generateToken, generateRefreshToken } from '../utils/generateToken.js';
@@ -16,6 +16,7 @@ import jwt from 'jsonwebtoken';
 import { generateSecret, generateURI, verify } from 'otplib';
 import QRCode from 'qrcode';
 import crypto from 'crypto';
+import { supabase } from '../config/supabase.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,25 +97,52 @@ const clearTrustedDeviceCookie = (res: Response) => {
 };
 
 // ============================================================
-// WHITELIST CHECK HELPER
+// WHITELIST CHECK HELPERS
 // ============================================================
-const checkWhitelist = async (email: string, role: string): Promise<{ allowed: boolean; message?: string }> => {
+const checkTeacherWhitelist = async (email: string): Promise<{ allowed: boolean; message?: string }> => {
   const whitelistEnabled = process.env.WHITELIST_ENABLED !== 'false';
 
   if (!whitelistEnabled) {
     return { allowed: true };
   }
 
-  const isWhitelisted = await WhitelistDB.isEmailWhitelisted(email);
+  const isWhitelisted = await TeacherWhitelistDB.isEmailWhitelisted(email);
   if (!isWhitelisted) {
-    console.log(`[WHITELIST] Email "${email}" not in whitelist for role "${role}"`);
+    console.log(`[TEACHER_WHITELIST] Email "${email}" not in whitelist`);
     return {
       allowed: false,
-      message: 'Email không được phép đăng nhập. Vui lòng liên hệ quản trị viên để được cấp quyền.',
+      message: 'Email giáo viên không được phép đăng nhập. Vui lòng liên hệ quản trị viên để được cấp quyền.',
     };
   }
 
   return { allowed: true };
+};
+
+const checkStudentWhitelist = async (email: string): Promise<{ allowed: boolean; message?: string }> => {
+  const whitelistEnabled = process.env.STUDENT_WHITELIST_ENABLED !== 'false';
+
+  if (!whitelistEnabled) {
+    return { allowed: true }; // Students can register freely if whitelist is disabled
+  }
+
+  const isWhitelisted = await StudentWhitelistDB.isEmailWhitelisted(email);
+  if (!isWhitelisted) {
+    console.log(`[STUDENT_WHITELIST] Email "${email}" not in whitelist`);
+    return {
+      allowed: false,
+      message: 'Email học sinh không được phép đăng nhập. Vui lòng liên hệ quản trị viên để được cấp quyền.',
+    };
+  }
+
+  return { allowed: true };
+};
+
+// Backward compatible function
+const checkWhitelist = async (email: string, role: string): Promise<{ allowed: boolean; message?: string }> => {
+  if (role === 'student') {
+    return checkStudentWhitelist(email);
+  }
+  return checkTeacherWhitelist(email);
 };
 
 // ============================================================
@@ -166,9 +194,17 @@ export const register = async (req: Request, res: Response) => {
   try {
     const { email, password, name, role, studentId, classId } = req.body;
 
-    // Check whitelist for teacher role
+    // Check whitelist for each role
     if (role === 'teacher') {
-      const whitelistCheck = await checkWhitelist(email, role);
+      const whitelistCheck = await checkTeacherWhitelist(email);
+      if (!whitelistCheck.allowed) {
+        return res.status(403).json({
+          success: false,
+          message: whitelistCheck.message,
+        });
+      }
+    } else if (role === 'student') {
+      const whitelistCheck = await checkStudentWhitelist(email);
       if (!whitelistCheck.allowed) {
         return res.status(403).json({
           success: false,
@@ -984,9 +1020,17 @@ export const googleLogin = async (req: Request, res: Response) => {
     // Use requested role, default to teacher for backward compatibility
     const role = requestedRole || 'teacher';
 
-    // For teachers, check whitelist. Students don't need whitelist - anyone can sign up with Google
+    // Check whitelist based on role
     if (role === 'teacher') {
-      const whitelistCheck = await checkWhitelist(email, 'teacher');
+      const whitelistCheck = await checkTeacherWhitelist(email);
+      if (!whitelistCheck.allowed) {
+        return res.status(403).json({
+          success: false,
+          message: whitelistCheck.message,
+        });
+      }
+    } else if (role === 'student') {
+      const whitelistCheck = await checkStudentWhitelist(email);
       if (!whitelistCheck.allowed) {
         return res.status(403).json({
           success: false,
@@ -1011,12 +1055,15 @@ export const googleLogin = async (req: Request, res: Response) => {
     }
 
     // ===== 2FA CHECK: Google OAuth must respect 2FA requirement =====
+    // Only teachers require 2FA (as per REQUIRE_2FA env)
+    // Students can login without 2FA
     console.log(`[googleLogin] REQUIRE_2FA env: "${process.env.REQUIRE_2FA}", user.role: ${user.role}, two_factor_enabled: ${user.two_factor_enabled}, two_factor_verified: ${user.two_factor_verified}`);
+    
     if (user.role === 'teacher' && process.env.REQUIRE_2FA === 'true') {
+      // Teacher with 2FA requirement - check trusted device
       if (user.two_factor_enabled && user.two_factor_verified) {
-        // Trusted device check: bypass 2FA if valid token exists
         const deviceToken = getTrustedDeviceToken(req);
-        console.log(`[googleLogin] 2FA user: ${user.email}, deviceToken present: ${!!deviceToken}, token value: ${deviceToken ? deviceToken.substring(0, 8) + '...' : 'none'}`);
+        console.log(`[googleLogin] 2FA user: ${user.email}, deviceToken present: ${!!deviceToken}`);
         if (deviceToken) {
           const trustedDevice = await TrustedDeviceDB.findValidDevice(user.id, deviceToken);
           console.log(`[googleLogin] findValidDevice result: ${trustedDevice ? 'FOUND (bypass 2FA)' : 'NOT FOUND (require 2FA)'}`);
@@ -1057,7 +1104,7 @@ export const googleLogin = async (req: Request, res: Response) => {
           }
         }
 
-        // No trusted device - require TOTP
+        // No trusted device - require TOTP for teacher
         return res.json({
           success: false,
           requires2FA: true,
@@ -1068,11 +1115,10 @@ export const googleLogin = async (req: Request, res: Response) => {
       }
 
       if (!user.two_factor_enabled) {
-        // First-time Google login - setup TOTP required
+        // First-time Google login - setup TOTP required for teacher
         const secret = generateSecret();
         const otpauthUrl = generateURI({ secret, label: user.email, issuer: 'Lan Anh English' });
 
-        // Generate QR code
         let qrCodeUrl = '';
         try {
           qrCodeUrl = await QRCode.toDataURL(otpauthUrl);
@@ -1080,7 +1126,6 @@ export const googleLogin = async (req: Request, res: Response) => {
           console.error('Failed to generate QR code:', err);
         }
 
-        // Store temp secret in DB (pending activation until verified)
         await UserDB.update(user.id, { two_factor_secret: secret });
 
         return res.json({
@@ -1094,7 +1139,7 @@ export const googleLogin = async (req: Request, res: Response) => {
         });
       }
     } else if (user.role === 'teacher' && user.two_factor_enabled && user.two_factor_verified) {
-      // REQUIRE_2FA not set, but user has 2FA enabled - still check trusted device
+      // Teacher with 2FA enabled but REQUIRE_2FA not set - still check trusted device
       const deviceToken = getTrustedDeviceToken(req);
       console.log(`[googleLogin] 2FA enabled (no REQUIRE_2FA env), user: ${user.email}, deviceToken: ${!!deviceToken}`);
       if (deviceToken) {
@@ -1135,16 +1180,17 @@ export const googleLogin = async (req: Request, res: Response) => {
             },
           });
         }
+        // No trusted device - require TOTP for teacher
+        return res.json({
+          success: false,
+          requires2FA: true,
+          skipSetup: true,
+          message: 'Tài khoản của bạn đã bật xác thực 2FA. Vui lòng nhập mã từ ứng dụng TOTP.',
+          tempToken: generateToken(user.id, '5m'),
+        });
       }
-      // No trusted device - require TOTP
-      return res.json({
-        success: false,
-        requires2FA: true,
-        skipSetup: true,
-        message: 'Tài khoản của bạn đã bật xác thực 2FA. Vui lòng nhập mã từ ứng dụng TOTP.',
-        tempToken: generateToken(user.id, '5m'),
-      });
     }
+    // Students skip 2FA check entirely - they can login without 2FA
     // ===== End 2FA check =====
 
     const accessToken = generateToken(user.id);
@@ -1380,13 +1426,27 @@ export const verifyRegisterOTP = async (req: Request, res: Response) => {
 // ============================================================
 // WHITELIST MANAGEMENT (Admin only)
 // ============================================================
+
+// List all whitelists (teacher + student)
 export const listWhitelist = async (req: AuthRequest, res: Response) => {
   try {
-    const whitelist = await WhitelistDB.list();
+    const { type } = req.query; // 'teacher', 'student', or undefined for all
+
+    let teacherWhitelist: any[] = [];
+    let studentWhitelist: any[] = [];
+
+    if (!type || type === 'teacher') {
+      teacherWhitelist = await TeacherWhitelistDB.list();
+    }
+    if (!type || type === 'student') {
+      studentWhitelist = await StudentWhitelistDB.list();
+    }
 
     res.json({
       success: true,
-      whitelist,
+      teacherWhitelist,
+      studentWhitelist,
+      total: teacherWhitelist.length + studentWhitelist.length,
     });
   } catch (error: any) {
     console.error('[WHITELIST] List error:', error);
@@ -1397,6 +1457,7 @@ export const listWhitelist = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// Manage whitelist entries
 export const manageWhitelist = async (req: AuthRequest, res: Response) => {
   try {
     const { email, name, role, action } = req.body;
@@ -1409,26 +1470,160 @@ export const manageWhitelist = async (req: AuthRequest, res: Response) => {
     }
 
     if (action === 'delete') {
-      await WhitelistDB.deactivate(email);
+      // Delete from appropriate whitelist based on role
+      if (role === 'student') {
+        await StudentWhitelistDB.deactivate(email);
+      } else {
+        await TeacherWhitelistDB.deactivate(email);
+      }
       res.json({
         success: true,
         message: 'Email đã được xóa khỏi whitelist.',
       });
     } else {
       // Add or update whitelist
-      await WhitelistDB.create({ email, name, role });
+      if (role === 'student') {
+        await StudentWhitelistDB.create({ email, name });
+      } else {
+        await TeacherWhitelistDB.create({ email, name });
+      }
       res.json({
         success: true,
         message: 'Email đã được thêm vào whitelist.',
       });
     }
-    } catch (error: any) {
-      console.error('[WHITELIST] Manage error:', error);
-      res.status(500).json({
+  } catch (error: any) {
+    console.error('[WHITELIST] Manage error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to manage whitelist.',
+    });
+  }
+};
+
+// Get whitelist statistics
+export const getWhitelistStats = async (req: AuthRequest, res: Response) => {
+  try {
+    const teacherCount = await TeacherWhitelistDB.count();
+    const studentCount = await StudentWhitelistDB.count();
+
+    res.json({
+      success: true,
+      stats: {
+        teachers: teacherCount,
+        students: studentCount,
+        total: teacherCount + studentCount,
+      },
+    });
+  } catch (error: any) {
+    console.error('[WHITELIST] Stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get whitelist stats.',
+    });
+  }
+};
+
+// ============================================================
+// USER MANAGEMENT (Admin only)
+// ============================================================
+
+// Get all users (for admin dashboard)
+export const listUsers = async (req: AuthRequest, res: Response) => {
+  try {
+    const { role, search, page = '1', limit = '50' } = req.query;
+    const pageNum = parseInt(page as string) || 1;
+    const limitNum = Math.min(parseInt(limit as string) || 50, 100);
+    const offset = (pageNum - 1) * limitNum;
+
+    let query = supabase
+      .from('users')
+      .select('id, email, name, role, student_id, class_id, avatar_url, phone, date_of_birth, two_factor_enabled, two_factor_verified, created_at, updated_at', { count: 'exact' });
+
+    // Filter by role
+    if (role && role !== 'all') {
+      query = query.eq('role', role);
+    }
+
+    // Search by email or name
+    if (search) {
+      query = query.or(`email.ilike.%${search}%,name.ilike.%${search}%`);
+    }
+
+    // Order by created_at descending
+    query = query.order('created_at', { ascending: false });
+    
+    // Pagination
+    query = query.range(offset, offset + limitNum - 1);
+
+    const { data, error, count } = await query;
+
+    if (error) throw error;
+
+    // Get statistics
+    const { count: teacherCount } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .eq('role', 'teacher');
+
+    const { count: studentCount } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .eq('role', 'student');
+
+    res.json({
+      success: true,
+      users: data || [],
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / limitNum),
+      },
+      stats: {
+        teachers: teacherCount || 0,
+        students: studentCount || 0,
+        total: (teacherCount || 0) + (studentCount || 0),
+      },
+    });
+  } catch (error: any) {
+    console.error('[USERS] List error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to list users.',
+    });
+  }
+};
+
+// Get user by ID (for admin dashboard)
+export const getUserById = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, name, role, student_id, class_id, avatar_url, phone, date_of_birth, two_factor_enabled, two_factor_verified, created_at, updated_at')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) {
+      return res.status(404).json({
         success: false,
-        message: error.message || 'Failed to manage whitelist.',
+        message: 'User not found.',
       });
     }
+
+    res.json({
+      success: true,
+      user: data,
+    });
+  } catch (error: any) {
+    console.error('[USERS] Get user error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get user.',
+    });
+  }
 };
 
 // ============================================================

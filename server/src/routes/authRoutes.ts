@@ -1,5 +1,5 @@
 import express from 'express';
-import { register, login, getMe, updateProfile, uploadAvatar, forgotPassword, resetPassword, verifyLoginOTP, request2FA, manageWhitelist, listWhitelist, googleLogin, revokeTrustedDevices, sendRegisterOTP, verifyRegisterOTP } from '../controllers/authController.js';
+import { register, login, getMe, updateProfile, uploadAvatar, forgotPassword, resetPassword, verifyLoginOTP, request2FA, manageWhitelist, listWhitelist, getWhitelistStats, googleLogin, revokeTrustedDevices, sendRegisterOTP, verifyRegisterOTP, listUsers, getUserById } from '../controllers/authController.js';
 import { protect, authorize } from '../middleware/auth.js';
 import { avatarUploadMiddleware } from '../utils/avatarUpload.js';
 
@@ -12,9 +12,17 @@ router.post('/login', login);
 router.post('/google-login', googleLogin);
 router.post('/verify-login-otp', verifyLoginOTP);
 router.post('/request-2fa', request2FA);
+
+// Whitelist management (admin only)
 router.get('/whitelist', protect, authorize('admin'), listWhitelist);
 router.post('/whitelist', protect, authorize('admin'), manageWhitelist);
 router.delete('/whitelist/:email', protect, authorize('admin'), manageWhitelist);
+router.get('/whitelist/stats', protect, authorize('admin'), getWhitelistStats);
+
+// User management (admin only)
+router.get('/users', protect, authorize('admin'), listUsers);
+router.get('/users/:id', protect, authorize('admin'), getUserById);
+
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
 router.get('/me', protect, getMe);
