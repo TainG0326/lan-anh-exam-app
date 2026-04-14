@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { UserDB } from '../database/User.js';
-import { WhitelistDB, TeacherWhitelistDB, StudentWhitelistDB } from '../database/Whitelist.js';
+import { WhitelistDB, TeacherWhitelistDB, StudentWhitelistDB, EmailWhitelistDB } from '../database/Whitelist.js';
 import { TrustedDeviceDB } from '../database/TrustedDevice.js';
 import { OTPService } from '../services/otpService.js';
 import { generateToken, generateRefreshToken } from '../utils/generateToken.js';
@@ -122,12 +122,13 @@ const checkStudentWhitelist = async (email: string): Promise<{ allowed: boolean;
   const whitelistEnabled = process.env.STUDENT_WHITELIST_ENABLED !== 'false';
 
   if (!whitelistEnabled) {
-    return { allowed: true }; // Students can register freely if whitelist is disabled
+    return { allowed: true };
   }
 
-  const isWhitelisted = await StudentWhitelistDB.isEmailWhitelisted(email);
+  // Check email_whitelist table with role='student' - unified whitelist system
+  const isWhitelisted = await EmailWhitelistDB.isEmailWhitelisted(email, 'student');
   if (!isWhitelisted) {
-    console.log(`[STUDENT_WHITELIST] Email "${email}" not in whitelist`);
+    console.log(`[STUDENT_WHITELIST] Email "${email}" not in email_whitelist with role=student`);
     return {
       allowed: false,
       message: 'Email học sinh không được phép đăng nhập. Vui lòng liên hệ quản trị viên để được cấp quyền.',
@@ -1439,7 +1440,7 @@ export const verifyRegisterOTP = async (req: Request, res: Response) => {
 // WHITELIST MANAGEMENT (Admin only)
 // ============================================================
 
-// List all whitelists (teacher + student)
+// List all whitelists (teacher + student) - uses unified email_whitelist table
 export const listWhitelist = async (req: AuthRequest, res: Response) => {
   try {
     const { type } = req.query; // 'teacher', 'student', or undefined for all
@@ -1448,10 +1449,10 @@ export const listWhitelist = async (req: AuthRequest, res: Response) => {
     let studentWhitelist: any[] = [];
 
     if (!type || type === 'teacher') {
-      teacherWhitelist = await TeacherWhitelistDB.list();
+      teacherWhitelist = await EmailWhitelistDB.list('teacher');
     }
     if (!type || type === 'student') {
-      studentWhitelist = await StudentWhitelistDB.list();
+      studentWhitelist = await EmailWhitelistDB.list('student');
     }
 
     res.json({
@@ -1469,7 +1470,7 @@ export const listWhitelist = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// Manage whitelist entries
+// Manage whitelist entries - uses unified email_whitelist table
 export const manageWhitelist = async (req: AuthRequest, res: Response) => {
   try {
     const { email, name, role, action } = req.body;
@@ -1481,24 +1482,22 @@ export const manageWhitelist = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    if (!role) {
+      return res.status(400).json({
+        success: false,
+        message: 'Role is required.',
+      });
+    }
+
     if (action === 'delete') {
-      // Delete from appropriate whitelist based on role
-      if (role === 'student') {
-        await StudentWhitelistDB.deactivate(email);
-      } else {
-        await TeacherWhitelistDB.deactivate(email);
-      }
+      await EmailWhitelistDB.deactivate(email, role);
       res.json({
         success: true,
         message: 'Email đã được xóa khỏi whitelist.',
       });
     } else {
-      // Add or update whitelist
-      if (role === 'student') {
-        await StudentWhitelistDB.create({ email, name });
-      } else {
-        await TeacherWhitelistDB.create({ email, name });
-      }
+      // Add or update whitelist using unified table
+      await EmailWhitelistDB.create({ email, name, role });
       res.json({
         success: true,
         message: 'Email đã được thêm vào whitelist.',
@@ -1513,11 +1512,11 @@ export const manageWhitelist = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// Get whitelist statistics
+// Get whitelist statistics - uses unified email_whitelist table
 export const getWhitelistStats = async (req: AuthRequest, res: Response) => {
   try {
-    const teacherCount = await TeacherWhitelistDB.count();
-    const studentCount = await StudentWhitelistDB.count();
+    const teacherCount = await EmailWhitelistDB.count('teacher');
+    const studentCount = await EmailWhitelistDB.count('student');
 
     res.json({
       success: true,

@@ -186,8 +186,109 @@ export const StudentWhitelistDB = {
   },
 };
 
-// Backward compatible - uses teacher_whitelist for backward compatibility
-export const WhitelistDB = {
+// Unified email_whitelist check - uses the common email_whitelist table
+export const EmailWhitelistDB = {
+  async findByEmail(email: string, role?: string): Promise<EmailWhitelist | null> {
+    let query = supabase
+      .from('email_whitelist')
+      .select('*')
+      .ilike('email', email)
+      .eq('is_active', true);
+    
+    if (role) {
+      query = query.eq('role', role);
+    }
+    
+    const { data, error } = await query.single();
+
+    if (error || !data) return null;
+    return data as EmailWhitelist;
+  },
+
+  async isEmailWhitelisted(email: string, role: string): Promise<boolean> {
+    const whitelist = await this.findByEmail(email, role);
+    return whitelist !== null;
+  },
+
+  async create(entry: {
+    email: string;
+    name?: string;
+    role: string;
+  }): Promise<EmailWhitelist> {
+    const { data, error } = await supabase
+      .from('email_whitelist')
+      .upsert({
+        email: entry.email.toLowerCase(),
+        name: entry.name,
+        role: entry.role,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'email' })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data as EmailWhitelist;
+  },
+
+  async deactivate(email: string, role?: string): Promise<void> {
+    let query = supabase
+      .from('email_whitelist')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .ilike('email', email);
+    
+    if (role) {
+      query = query.eq('role', role);
+    }
+
+    const { error } = await query;
+    if (error) throw error;
+  },
+
+  async activate(email: string, role?: string): Promise<void> {
+    let query = supabase
+      .from('email_whitelist')
+      .update({ is_active: true, updated_at: new Date().toISOString() })
+      .ilike('email', email);
+    
+    if (role) {
+      query = query.eq('role', role);
+    }
+
+    const { error } = await query;
+    if (error) throw error;
+  },
+
+  async list(role?: string): Promise<EmailWhitelist[]> {
+    let query = supabase
+      .from('email_whitelist')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (role) {
+      query = query.eq('role', role);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []) as EmailWhitelist[];
+  },
+
+  async count(role?: string): Promise<number> {
+    let query = supabase
+      .from('email_whitelist')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_active', true);
+    
+    if (role) {
+      query = query.eq('role', role);
+    }
+
+    const { count, error } = await query;
+    if (error) return 0;
+    return count || 0;
+  },
+};
   async findByEmail(email: string): Promise<EmailWhitelist | null> {
     const result = await TeacherWhitelistDB.findByEmail(email);
     if (!result) return null;
