@@ -1064,10 +1064,15 @@ export const googleLogin = async (req: Request, res: Response) => {
       const existingUser = await UserDB.findByEmail(email);
       console.log(`[googleLogin] findByEmail(${email}): found=${!!existingUser}, role=${existingUser?.role}`);
       if (existingUser) {
-        // Same email but different role - create a separate account for this role
-        console.log(`[googleLogin] Email "${email}" exists as ${existingUser.role}, creating new ${role} account`);
+        // Email already exists with a different role - reject login
+        console.log(`[googleLogin] Email "${email}" exists as ${existingUser.role}, rejecting student login attempt`);
+        return res.status(409).json({
+          success: false,
+          message: `Email này đã được đăng ký với vai trò "${existingUser.role}". Vui lòng sử dụng trang dành cho ${existingUser.role === 'teacher' ? 'giáo viên' : 'học sinh'}.`,
+          existingRole: existingUser.role,
+        });
       }
-      // Create new user with the requested role (teacher or student)
+      // Brand new user - create account
       user = await UserDB.create({
         email,
         name: name || (role === 'student' ? 'Student' : 'Teacher'),
