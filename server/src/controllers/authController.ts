@@ -1062,9 +1062,22 @@ export const googleLogin = async (req: Request, res: Response) => {
         role: role,
         avatar_url: avatarUrl || undefined,
       });
-    } else if (avatarUrl && !user.avatar_url) {
+    } else {
+      // User already exists - check if role matches requested role
+      if (user.role !== role) {
+        const roleLabel = user.role === 'teacher' ? 'giáo viên' : 'học sinh';
+        const requestedLabel = role === 'teacher' ? 'giáo viên' : 'học sinh';
+        return res.status(403).json({
+          success: false,
+          message: `Email này đã được đăng ký với vai trò ${roleLabel}. Vui lòng sử dụng cổng ${requestedLabel} để đăng nhập.`,
+          roleMismatch: true,
+          existingRole: user.role,
+        });
+      }
       // Only set Google avatar if user has no existing avatar
-      user = await UserDB.update(user.id, { avatar_url: avatarUrl });
+      if (avatarUrl && !user.avatar_url) {
+        user = await UserDB.update(user.id, { avatar_url: avatarUrl });
+      }
     }
 
     // ===== 2FA CHECK: Google OAuth must respect 2FA requirement =====
