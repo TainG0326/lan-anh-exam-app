@@ -1082,8 +1082,6 @@ export const googleLogin = async (req: Request, res: Response) => {
         user = await UserDB.update(user.id, { avatar_url: avatarUrl });
       }
     }
-      }
-    }
 
     // ===== 2FA CHECK: Google OAuth must respect 2FA requirement =====
     // Only teachers require 2FA (as per REQUIRE_2FA env)
