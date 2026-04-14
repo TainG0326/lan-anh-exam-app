@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { UserDB } from '../database/User.js';
-import { WhitelistDB, TeacherWhitelistDB, StudentWhitelistDB, EmailWhitelistDB } from '../database/Whitelist.js';
+import { TeacherWhitelistDB, StudentWhitelistDB, EmailWhitelistDB } from '../database/Whitelist.js';
 import { TrustedDeviceDB } from '../database/TrustedDevice.js';
 import { OTPService } from '../services/otpService.js';
 import { generateToken, generateRefreshToken } from '../utils/generateToken.js';
