@@ -289,31 +289,3 @@ export const EmailWhitelistDB = {
     return count || 0;
   },
 };
-  async findByEmail(email: string): Promise<EmailWhitelist | null> {
-    const result = await TeacherWhitelistDB.findByEmail(email);
-    if (!result) return null;
-    return { ...result, role: 'teacher' } as EmailWhitelist;
-  },
-
-  async isEmailWhitelisted(email: string): Promise<boolean> {
-    return TeacherWhitelistDB.isEmailWhitelisted(email);
-  },
-
-  async create(entry: {
-    email: string;
-    name?: string;
-    role?: string;
-  }): Promise<EmailWhitelist> {
-    const result = await TeacherWhitelistDB.create({ email: entry.email, name: entry.name });
-    return { ...result, role: 'teacher' } as EmailWhitelist;
-  },
-
-  async deactivate(email: string): Promise<void> {
-    return TeacherWhitelistDB.deactivate(email);
-  },
-
-  async list(): Promise<EmailWhitelist[]> {
-    const results = await TeacherWhitelistDB.list();
-    return results.map(r => ({ ...r, role: 'teacher' })) as EmailWhitelist[];
-  },
-};
