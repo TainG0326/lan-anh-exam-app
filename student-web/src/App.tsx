@@ -29,12 +29,22 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     );
   }
 
-  if (!user) {
+  const hasToken = !!localStorage.getItem('token');
+
+  if (!user && !hasToken) {
     return <Navigate to="/login" replace />;
   }
 
-  if (user.role !== 'student') {
+  if (user && user.role !== 'student') {
     return <Navigate to="/login" replace />;
+  }
+
+  if (!user && hasToken) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
   }
 
   return <>{children}</>;
