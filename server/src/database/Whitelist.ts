@@ -189,24 +189,39 @@ export const StudentWhitelistDB = {
 // Unified email_whitelist check - uses the common email_whitelist table
 export const EmailWhitelistDB = {
   async findByEmail(email: string, role?: string): Promise<EmailWhitelist | null> {
+    console.log(`[EmailWhitelistDB] findByEmail: email="${email}", role="${role || 'any'}"`);
     let query = supabase
       .from('email_whitelist')
       .select('*')
-      .ilike('email', email)
       .eq('is_active', true);
     
-    if (role) {
+    if (role === 'any') {
+      query = query.or(`role.eq.${role},role.is.null`);
+    } else if (role) {
       query = query.eq('role', role);
     }
     
-    const { data, error } = await query.single();
+    // Case-insensitive email match
+    query = query.ilike('email', email);
+    
+    const { data, error } = await query.maybeSingle();
+
+    if (error) {
+      console.log(`[EmailWhitelistDB] findByEmail error: ${error.message}`);
+    } else if (data) {
+      console.log(`[EmailWhitelistDB] Found whitelist entry:`, JSON.stringify(data));
+    } else {
+      console.log(`[EmailWhitelistDB] No whitelist entry found for email="${email}", role="${role}"`);
+    }
 
     if (error || !data) return null;
     return data as EmailWhitelist;
   },
 
   async isEmailWhitelisted(email: string, role: string): Promise<boolean> {
+    console.log(`[EmailWhitelistDB] isEmailWhitelisted checking: email="${email}", role="${role}"`);
     const whitelist = await this.findByEmail(email, role);
+    console.log(`[EmailWhitelistDB] Result: ${whitelist ? 'ALLOWED' : 'NOT FOUND'}`);
     return whitelist !== null;
   },
 
