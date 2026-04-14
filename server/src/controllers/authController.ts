@@ -1036,7 +1036,9 @@ export const googleLogin = async (req: Request, res: Response) => {
     // Check whitelist based on role
     if (role === 'teacher') {
       const whitelistCheck = await checkTeacherWhitelist(email);
+      console.log(`[googleLogin] Teacher whitelist check for ${email}: allowed=${whitelistCheck.allowed}`);
       if (!whitelistCheck.allowed) {
+        console.log(`[googleLogin] REJECTED: ${whitelistCheck.message}`);
         return res.status(403).json({
           success: false,
           message: whitelistCheck.message,
@@ -1044,7 +1046,9 @@ export const googleLogin = async (req: Request, res: Response) => {
       }
     } else if (role === 'student') {
       const whitelistCheck = await checkStudentWhitelist(email);
+      console.log(`[googleLogin] Student whitelist check for ${email}: allowed=${whitelistCheck.allowed}`);
       if (!whitelistCheck.allowed) {
+        console.log(`[googleLogin] REJECTED: ${whitelistCheck.message}`);
         return res.status(403).json({
           success: false,
           message: whitelistCheck.message,
@@ -1053,10 +1057,12 @@ export const googleLogin = async (req: Request, res: Response) => {
     }
 
     let user = await UserDB.findByEmailAndRole(email, role);
+    console.log(`[googleLogin] findByEmailAndRole(${email}, ${role}): found=${!!user}, userId=${user?.id}`);
 
     if (!user) {
       // Check if email is used by a different role
       const existingUser = await UserDB.findByEmail(email);
+      console.log(`[googleLogin] findByEmail(${email}): found=${!!existingUser}, role=${existingUser?.role}`);
       if (existingUser) {
         // Same email but different role - create a separate account for this role
         console.log(`[googleLogin] Email "${email}" exists as ${existingUser.role}, creating new ${role} account`);
@@ -1068,10 +1074,14 @@ export const googleLogin = async (req: Request, res: Response) => {
         role: role,
         avatar_url: avatarUrl || undefined,
       });
+      console.log(`[googleLogin] Created new user: id=${user.id}, role=${user.role}, email=${user.email}`);
     } else {
+      console.log(`[googleLogin] Found existing user: id=${user.id}, role=${user.role}`);
       // Only set Google avatar if user has no existing avatar
       if (avatarUrl && !user.avatar_url) {
         user = await UserDB.update(user.id, { avatar_url: avatarUrl });
+      }
+    }
       }
     }
 
