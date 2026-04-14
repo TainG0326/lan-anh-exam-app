@@ -1052,9 +1052,15 @@ export const googleLogin = async (req: Request, res: Response) => {
       }
     }
 
-    let user = await UserDB.findByEmail(email);
+    let user = await UserDB.findByEmailAndRole(email, role);
 
     if (!user) {
+      // Check if email is used by a different role
+      const existingUser = await UserDB.findByEmail(email);
+      if (existingUser) {
+        // Same email but different role - create a separate account for this role
+        console.log(`[googleLogin] Email "${email}" exists as ${existingUser.role}, creating new ${role} account`);
+      }
       // Create new user with the requested role (teacher or student)
       user = await UserDB.create({
         email,
@@ -1063,17 +1069,6 @@ export const googleLogin = async (req: Request, res: Response) => {
         avatar_url: avatarUrl || undefined,
       });
     } else {
-      // User already exists - check if role matches requested role
-      if (user.role !== role) {
-        const roleLabel = user.role === 'teacher' ? 'giáo viên' : 'học sinh';
-        const requestedLabel = role === 'teacher' ? 'giáo viên' : 'học sinh';
-        return res.status(403).json({
-          success: false,
-          message: `Email này đã được đăng ký với vai trò ${roleLabel}. Vui lòng sử dụng cổng ${requestedLabel} để đăng nhập.`,
-          roleMismatch: true,
-          existingRole: user.role,
-        });
-      }
       // Only set Google avatar if user has no existing avatar
       if (avatarUrl && !user.avatar_url) {
         user = await UserDB.update(user.id, { avatar_url: avatarUrl });

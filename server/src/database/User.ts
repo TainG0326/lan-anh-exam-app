@@ -31,6 +31,18 @@ export const UserDB = {
     return data as User;
   },
 
+  async findByEmailAndRole(email: string, role: string): Promise<User | null> {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .ilike('email', email)
+      .eq('role', role)
+      .single();
+
+    if (error || !data) return null;
+    return data as User;
+  },
+
   async findById(id: string): Promise<User | null> {
     const { data, error } = await supabase
       .from('users')
