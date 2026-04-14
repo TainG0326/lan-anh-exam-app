@@ -1310,6 +1310,20 @@ export const sendRegisterOTP = async (req: Request, res: Response) => {
       });
     }
 
+    // WHITELIST CHECK: Only allow registration if email is in whitelist
+    const whitelistEnabled = process.env.STUDENT_WHITELIST_ENABLED !== 'false';
+    if (whitelistEnabled) {
+      const isWhitelisted = await EmailWhitelistDB.isEmailWhitelisted(email.toLowerCase(), 'student');
+      if (!isWhitelisted) {
+        console.log(`[Register] Email "${email}" NOT in whitelist - rejecting registration`);
+        return res.status(403).json({
+          success: false,
+          message: 'Email không nằm trong danh sách được phép đăng ký. Vui lòng liên hệ quản trị viên để được cấp quyền.',
+        });
+      }
+      console.log(`[Register] Email "${email}" is whitelisted - allowing registration`);
+    }
+
     // Create temporary user record with pending status
     const tempUserId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 

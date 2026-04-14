@@ -196,7 +196,8 @@ export const EmailWhitelistDB = {
       .eq('is_active', true);
     
     if (role === 'any') {
-      query = query.or(`role.eq.${role},role.is.null`);
+      // Match either 'any' role OR entries with no role (null)
+      query = query.or(`role.eq.any,role.is.null`);
     } else if (role) {
       query = query.eq('role', role);
     }
@@ -209,7 +210,7 @@ export const EmailWhitelistDB = {
     if (error) {
       console.log(`[EmailWhitelistDB] findByEmail error: ${error.message}`);
     } else if (data) {
-      console.log(`[EmailWhitelistDB] Found whitelist entry:`, JSON.stringify(data));
+      console.log(`[EmailWhitelistDB] Found whitelist entry: role=${data.role}`);
     } else {
       console.log(`[EmailWhitelistDB] No whitelist entry found for email="${email}", role="${role}"`);
     }

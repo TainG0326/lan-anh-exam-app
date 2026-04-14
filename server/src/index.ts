@@ -31,6 +31,7 @@ const PORT = parseListenPort();
 function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true;
   const fixed = [
+    'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:3002',
     'http://localhost:5173',
@@ -64,6 +65,7 @@ const corsOptions: cors.CorsOptions = {
     'Authorization',
     'X-Access-Token',
     'X-Device-Token',
+    'X-Admin-Api-Key',
     'Cookie',
     'Origin',
     'Accept',
@@ -121,6 +123,7 @@ async function mountApiRoutes(): Promise<void> {
     { default: aiImportRoutes },
     { default: notificationRoutes },
     { default: gradeRoutes },
+    { default: adminRoutes },
   ] = await Promise.all([
     import('./routes/authRoutes.js'),
     import('./routes/classRoutes.js'),
@@ -130,6 +133,7 @@ async function mountApiRoutes(): Promise<void> {
     import('./routes/aiImportRoutes.js'),
     import('./routes/notificationRoutes.js'),
     import('./routes/gradeRoutes.js'),
+    import('./routes/adminRoutes.js'),
   ]);
 
   app.use('/api/auth', authRoutes);
@@ -140,6 +144,7 @@ async function mountApiRoutes(): Promise<void> {
   app.use('/api/ai', aiImportRoutes);
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/grades', gradeRoutes);
+  app.use('/api/admin', adminRoutes);
 
   app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     console.error('Error:', err);
