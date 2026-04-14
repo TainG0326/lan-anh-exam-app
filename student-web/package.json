@@ -9,6 +9,7 @@
     "deploy": "vercel --prod --token=VClUpEtN3GscnPNHV40414lr"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.103.0",
     "@tensorflow-models/blazeface": "*",
     "@tensorflow/tfjs": "*",
     "axios": "^1.6.2",
@@ -26,16 +27,10 @@
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",
     "@vitejs/plugin-react": "^4.2.1",
-    "typescript": "^5.3.3",
-    "vite": "^5.0.8",
-    "tailwindcss": "^3.4.0",
     "autoprefixer": "^10.4.16",
-    "postcss": "^8.4.32"
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8"
   }
 }
-
-
-
-
-
-

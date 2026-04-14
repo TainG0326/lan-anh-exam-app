@@ -71,8 +71,7 @@ export default function AvatarModal({
         fileInputRef.current.value = '';
       }
       onClose();
-    } catch (error) {
-      console.error('Upload failed:', error);
+    } catch {
       alert('Failed to upload image. Please try again.');
     } finally {
       setIsUploading(false);
@@ -105,8 +104,7 @@ export default function AvatarModal({
       await onRemove();
       setPreview(null);
       onClose();
-    } catch (error) {
-      console.error('Remove failed:', error);
+    } catch {
       alert('Failed to remove avatar');
     } finally {
       setIsUploading(false);

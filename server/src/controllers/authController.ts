@@ -282,8 +282,20 @@ export const login = async (req: Request, res: Response) => {
       });
     }
 
-    // No whitelist check here — whitelist is only checked during account creation
-    // (register / google-login). Existing accounts can always log in.
+    // ===== WHITELIST CHECK: Required for ALL users (teacher and student) =====
+    // Both Google login and normal login must check whitelist
+    const whitelistCheck = user.role === 'student' 
+      ? await checkStudentWhitelist(email)
+      : await checkTeacherWhitelist(email);
+    
+    if (!whitelistCheck.allowed) {
+      console.log(`[LOGIN] Whitelist rejected: ${email} (role: ${user.role})`);
+      return res.status(403).json({
+        success: false,
+        message: whitelistCheck.message || 'Email không được phép đăng nhập. Vui lòng liên hệ quản trị viên.',
+      });
+    }
+    // ===== END WHITELIST CHECK =====
 
     const isPasswordValid = await UserDB.comparePassword(user.password!, password);
     if (!isPasswordValid) {

@@ -1,31 +1,33 @@
 import { useState, useEffect, useRef } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { logout } from '../services/authService';
-import { 
-  LayoutDashboard, 
-  FileText, 
-  LogOut, 
-  Menu, 
-  X, 
-  Users,
-  Search,
-  Bell,
+import {
+  LayoutDashboard,
+  BookOpen,
+  FileText,
   GraduationCap,
-  User
+  Bell,
+  LogOut,
+  Menu,
+  Settings,
+  User,
+  Users,
 } from 'lucide-react';
 import Logo from './Logo';
+import LanguageSwitcher from './LanguageSwitcher';
 
 export default function Layout() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
+  const { t } = useLanguage();
   const location = useLocation();
+  const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close menu when clicking outside
+  // Close profile menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
@@ -44,43 +46,54 @@ export default function Layout() {
 
   const handleLogout = () => {
     logout();
-    window.location.href = '/login';
+    setUser(null);
   };
 
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/notifications', label: 'Notifications', icon: Bell },
-    { path: '/assignments', label: 'Assignments', icon: FileText },
-    { path: '/exams', label: 'Exams', icon: FileText },
-    { path: '/grades', label: 'Grades', icon: GraduationCap },
-  ];
-
-  const notifications = [
-    { id: 1, text: "New assignment available", time: "2m ago" },
-    { id: 2, text: "Exam results published", time: "1h ago" },
+    { path: '/', label: t('nav.dashboard'), icon: LayoutDashboard },
+    { path: '/notifications', label: t('nav.notifications'), icon: Bell },
+    { path: '/assignments', label: t('nav.assignments'), icon: BookOpen },
+    { path: '/exams', label: t('nav.exams'), icon: FileText },
+    { path: '/grades', label: t('nav.grades'), icon: GraduationCap },
+    { path: '/join-class', label: t('nav.joinClass'), icon: Users },
   ];
 
   return (
-    <div className="flex h-screen bg-background text-text-primary font-sans">
+    <div className="student-app-bg h-screen">
+      <div className="student-app-bg-overlay flex h-screen text-text-primary font-sans dark:text-white">
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/20 z-30 lg:hidden"
           onClick={() => setIsSidebarOpen(false)}
-        ></div>
+        />
       )}
 
-      {/* Sidebar - 280px width, white background */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-[280px] bg-background-light border-r border-border flex flex-col transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      {/* Sidebar - 280px, white background */}
+      <aside
+        className={`
+          fixed inset-y-0 left-0 z-40 w-[280px]
+          bg-background-light border-r border-border
+          flex flex-col transform transition-transform duration-300 ease-in-out
+          lg:translate-x-0 lg:static
+          ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}
+      >
+        {/* Logo - click to dashboard */}
         <div className="p-6">
-          <div className="flex items-center gap-3">
-            <Logo className="w-10 h-10" />
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
+            <Logo className="w-12 h-12" />
             <h1 className="text-2xl font-bold tracking-tighter text-text-primary">
               Lan Anh
             </h1>
-          </div>
+          </button>
         </div>
 
+        {/* Navigation */}
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -90,39 +103,51 @@ export default function Layout() {
                 key={item.path}
                 to={item.path}
                 onClick={() => setIsSidebarOpen(false)}
-                className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-full transition-colors relative
-                  ${isActive 
-                    ? 'bg-primary/20 text-text-primary' 
-                    : 'text-text-secondary hover:bg-gray-50'
-                  }`}
+                className={`
+                  relative flex w-full items-center rounded-full px-4 py-3 text-sm font-medium transition-colors
+                  ${isActive
+                    ? 'bg-primary/20 text-text-primary'
+                    : 'text-text-secondary hover:bg-background'
+                  }
+                `}
               >
                 {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary rounded-r-full"></span>
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary rounded-r-full" />
                 )}
-                
-                <Icon className={`mr-3 h-5 w-5 ${isActive ? 'text-text-primary' : 'text-text-secondary'}`} />
-                
+                <Icon
+                  className={`mr-3 h-5 w-5 ${isActive ? 'text-text-primary' : 'text-text-secondary'}`}
+                />
                 <span className="flex-1 text-left">{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
+        {/* Bottom actions */}
         <div className="p-4 border-t border-border space-y-1">
           <Link
-            to="/join-class"
+            to="/profile"
             onClick={() => setIsSidebarOpen(false)}
-            className="flex items-center w-full px-4 py-3 text-sm font-medium text-text-secondary rounded-full hover:bg-gray-50 transition-colors"
+            className={`
+              relative flex w-full items-center rounded-full px-4 py-3 text-sm font-medium transition-colors
+              ${location.pathname === '/profile'
+                ? 'bg-primary/20 text-text-primary'
+                : 'text-text-secondary hover:bg-background'}
+            `}
           >
-            <Users className="mr-3 h-5 w-5" />
-            Join Class
+            {location.pathname === '/profile' && (
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary rounded-r-full" />
+            )}
+            <Settings className={`mr-3 h-5 w-5 ${location.pathname === '/profile' ? 'text-text-primary' : 'text-text-secondary'}`} />
+            {t('nav.profile') || 'Profile Settings'}
           </Link>
-          <button 
+          <button
+            type="button"
             onClick={handleLogout}
-            className="flex items-center w-full px-4 py-3 text-sm font-medium text-text-secondary rounded-full hover:bg-gray-50 transition-colors"
+            className="flex w-full items-center rounded-full px-4 py-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
           >
             <LogOut className="mr-3 h-5 w-5" />
-            Logout
+            {t('common.logout') || 'Logout'}
           </button>
         </div>
       </aside>
@@ -131,66 +156,37 @@ export default function Layout() {
       <main className="flex-1 min-w-0 h-screen overflow-y-auto">
         {/* Minimalist Header */}
         <header className="sticky top-0 z-20 bg-background-light border-b border-border px-6 py-4">
-          <div className="flex items-center justify-between max-w-7xl mx-auto">
+          <div className="flex items-center justify-between max-w-7xl mx-auto w-full gap-3">
             {/* Mobile Menu */}
-            <div className="lg:hidden flex items-center gap-3">
-              <button onClick={() => setIsSidebarOpen(true)} className="p-2 rounded-lg hover:bg-gray-50">
+            <div className="flex items-center gap-3 lg:hidden">
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen(true)}
+                className="p-2 rounded-lg hover:bg-background"
+              >
                 <Menu className="w-5 h-5 text-text-primary" />
               </button>
-              <div className="flex items-center gap-2">
-                <Logo className="w-8 h-8" />
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              >
+                <Logo className="w-9 h-9" />
                 <span className="text-lg font-bold text-text-primary">Lan Anh</span>
-              </div>
+              </button>
             </div>
 
-            {/* Desktop: Search, Notifications, Avatar */}
-            <div className="hidden lg:flex items-center gap-4 flex-1 max-w-2xl mx-auto">
-              <div className="relative flex-1">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-border rounded-full text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                />
-              </div>
-            </div>
+            <div className="hidden lg:block flex-1 min-w-0" aria-hidden="true" />
 
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <button 
-                  className="p-2 rounded-full hover:bg-gray-50 transition-colors relative"
-                  onClick={() => setShowNotifications(!showNotifications)}
-                >
-                  <Bell className="w-5 h-5 text-text-secondary" />
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-background-light"></span>
-                </button>
+            {/* Right side: Language + Avatar */}
+            <div className="flex items-center gap-3 ml-auto">
+              <LanguageSwitcher />
 
-                {/* Notification Dropdown */}
-                {showNotifications && (
-                  <div className="absolute right-0 top-12 w-80 bg-background-light rounded-3xl shadow-soft border border-border z-50 animate-fade-in-down">
-                    <div className="flex justify-between items-center p-4 border-b border-border">
-                      <h3 className="font-bold text-text-primary text-sm">Notifications</h3>
-                      <button onClick={() => setShowNotifications(false)} className="text-text-muted hover:text-text-primary">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="max-h-64 overflow-y-auto">
-                      {notifications.map(n => (
-                        <div key={n.id} className="p-4 border-b border-border hover:bg-gray-50 cursor-pointer transition-colors">
-                          <p className="text-sm text-text-primary font-medium mb-1">{n.text}</p>
-                          <p className="text-xs text-text-secondary">{n.time}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
+              {/* Profile Avatar */}
               <div className="relative z-50" ref={profileMenuRef}>
-              <button 
-                className="h-10 w-10 rounded-full overflow-hidden border-2 border-border shadow-soft hover:ring-2 hover:ring-primary/20 transition-all cursor-pointer"
+                <button
+                  type="button"
+                  className="h-10 w-10 cursor-pointer overflow-hidden rounded-full border-2 border-border shadow-soft transition-all hover:ring-2 hover:ring-primary/20"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowProfileMenu(!showProfileMenu);
@@ -198,40 +194,33 @@ export default function Layout() {
                 >
                   {user?.avatarUrl ? (
                     <img
-                      src={user.avatarUrl.startsWith('http') 
-                        ? user.avatarUrl 
-                        : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${user.avatarUrl}`}
+                      src={user.avatarUrl.startsWith('http') ? user.avatarUrl : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${user.avatarUrl}`}
                       alt={user.name}
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                <div className="h-full w-full bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center">
-                  <span className="text-primary-foreground font-bold text-sm">
-                    {user?.name?.charAt(0).toUpperCase() || 'S'}
-                  </span>
-                </div>
+                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary to-primary-hover">
+                      <span className="text-sm font-bold text-white">
+                        {user?.name?.charAt(0).toUpperCase() || 'S'}
+                      </span>
+                    </div>
                   )}
                 </button>
 
-                {/* Profile Dropdown Menu */}
                 {showProfileMenu && (
-                  <div 
-                    className="absolute right-0 top-12 w-56 bg-background-light rounded-2xl shadow-soft border border-border z-[60] animate-fade-in-down"
-                  >
+                  <div className="animate-fade-in-down absolute right-0 top-12 z-[60] w-56 rounded-2xl border border-border bg-background-light shadow-soft">
                     <div className="p-2">
-                      <div className="px-4 py-3 border-b border-border mb-2">
-                        <p className="text-sm font-semibold text-text-primary">{user?.name || 'User'}</p>
-                        <p className="text-xs text-text-secondary truncate">{user?.email || ''}</p>
+                      <div className="mb-2 border-b border-border px-4 py-3">
+                        <p className="text-sm font-semibold text-text-primary">{user?.name || 'Student'}</p>
+                        <p className="truncate text-xs text-text-secondary">{user?.email || ''}</p>
                       </div>
                       <Link
                         to="/profile"
-                        onClick={() => {
-                          setShowProfileMenu(false);
-                        }}
-                        className="w-full flex items-center px-4 py-2 text-sm text-text-secondary hover:bg-gray-50 rounded-lg transition-colors"
+                        onClick={() => setShowProfileMenu(false)}
+                        className="flex w-full items-center rounded-lg px-4 py-2 text-sm text-text-secondary transition-colors hover:bg-background"
                       >
-                        <User className="w-4 h-4 mr-3" />
-                        Profile Settings
+                        <User className="mr-3 h-4 w-4" />
+                        {t('nav.profile') || 'Profile Settings'}
                       </Link>
                       <button
                         type="button"
@@ -239,11 +228,11 @@ export default function Layout() {
                           setShowProfileMenu(false);
                           handleLogout();
                         }}
-                        className="w-full flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors mt-1 text-left"
+                        className="mt-1 flex w-full items-center rounded-lg px-4 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50"
                       >
-                        <LogOut className="w-4 h-4 mr-3" />
-                        Logout
-              </button>
+                        <LogOut className="mr-3 h-4 w-4" />
+                        {t('common.logout') || 'Logout'}
+                      </button>
                     </div>
                   </div>
                 )}
@@ -251,8 +240,8 @@ export default function Layout() {
             </div>
           </div>
         </header>
-        
-        {/* Main Area - Centered with max-width, gap-8 */}
+
+        {/* Page Content */}
         <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="animate-fade-in">
             <Outlet />
@@ -260,15 +249,7 @@ export default function Layout() {
         </div>
       </main>
 
-      {/* Click outside to close notifications */}
-      {showNotifications && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => {
-            setShowNotifications(false);
-          }}
-        />
-      )}
+      </div>
     </div>
   );
 }

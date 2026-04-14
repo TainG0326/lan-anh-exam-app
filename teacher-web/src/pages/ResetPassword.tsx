@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 // API URL
-const API_URL = 'https://server-three-blue.vercel.app/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -73,10 +73,10 @@ export default function ResetPassword() {
       if (!response.ok) {
         toast.error(data.message || 'Failed to send OTP');
       } else {
-        toast.success(data.message || 'Mã OTP đã được tạo!');
+        toast.success(data.message || 'OTP code has been sent!');
         // Show test OTP if in test mode
         if (data.testOtp) {
-          toast(<span>Mã OTP test: <strong>{data.testOtp}</strong></span>, { duration: 10000 });
+          toast(<span>Test OTP: <strong>{data.testOtp}</strong></span>, { duration: 10000 });
         }
         setStep('verify');
         startResendCooldown();
@@ -92,7 +92,7 @@ export default function ResetPassword() {
     e.preventDefault();
     
     if (!otp || otp.length !== 6) {
-      toast.error('Vui lòng nhập mã OTP 6 chữ số');
+      toast.error('Please enter a 6-digit OTP code');
       return;
     }
     
@@ -120,7 +120,7 @@ export default function ResetPassword() {
       if (!response.ok) {
         toast.error(data.message || 'Failed to resend OTP');
       } else {
-        toast.success(data.message || 'Mã OTP đã được gửi lại!');
+        toast.success(data.message || 'OTP code has been resent!');
         startResendCooldown();
       }
     } catch (err: any) {

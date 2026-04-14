@@ -61,7 +61,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSuccess }: Cr
       const data = await getClasses();
       setClasses(data || []);
     } catch {
-      toast.error('Không thể tải danh sách lớp');
+      toast.error('Failed to load classes');
     } finally {
       setLoadingClasses(false);
     }
@@ -69,21 +69,21 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSuccess }: Cr
 
   const addQuestion = () => {
     if (!currentQuestion.question.trim()) {
-      toast.error('Vui lòng nhập nội dung câu hỏi');
+      toast.error('Please enter question content');
       return;
     }
     if (currentQuestion.type === 'multiple-choice') {
       const filledOptions = currentQuestion.options.filter(o => o.trim());
       if (filledOptions.length < 2) {
-        toast.error('Cần ít nhất 2 lựa chọn');
+        toast.error('At least 2 options required');
         return;
       }
       if (!currentQuestion.correctAnswer) {
-        toast.error('Vui lòng chọn đáp án đúng');
+        toast.error('Please select the correct answer');
         return;
       }
     } else if (!currentQuestion.correctAnswer.trim()) {
-      toast.error('Vui lòng nhập đáp án đúng');
+      toast.error('Please enter the correct answer');
       return;
     }
     setQuestions([...questions, { ...currentQuestion }]);
@@ -103,25 +103,25 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSuccess }: Cr
       points: q.points ?? 10,
     }));
     setQuestions((prev) => [...prev, ...mapped]);
-    toast.success(`Đã thêm ${aiQuestions.length} câu bằng AI`);
+    toast.success(`Added ${aiQuestions.length} questions via AI`);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim()) {
-      toast.error('Vui lòng nhập tiêu đề bài tập');
+      toast.error('Please enter assignment title');
       return;
     }
     if (!formData.classId) {
-      toast.error('Vui lòng chọn lớp học');
+      toast.error('Please select a class');
       return;
     }
     if (!formData.dueDate) {
-      toast.error('Vui lòng chọn ngày hết hạn');
+      toast.error('Please select due date');
       return;
     }
     if (questions.length === 0) {
-      toast.error('Vui lòng thêm ít nhất 1 câu hỏi');
+      toast.error('Please add at least 1 question');
       return;
     }
 
@@ -134,11 +134,11 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSuccess }: Cr
         dueDate: formData.dueDate,
         questions,
       });
-      toast.success('Tạo bài tập thành công!');
+      toast.success('Assignment created successfully!');
       onSuccess();
       onClose();
     } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Tạo bài tập thất bại');
+      toast.error(error?.response?.data?.message || 'Failed to create assignment');
     } finally {
       setLoading(false);
     }

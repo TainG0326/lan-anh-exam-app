@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { updateProfile, uploadAvatar } from '../services/authService';
+import { updateProfile, uploadAvatar, getMe } from '../services/authService';
 import { getClasses } from '../services/classService';
 import { getExams } from '../services/examService';
 import {
@@ -24,6 +24,16 @@ import toast from 'react-hot-toast';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 
 const EXTRA_STORAGE_KEY = 'teacher-profile-extra';
+
+// Helper: build full avatar URL with cache-busting
+export function getFullAvatarUrl(avatarUrl: string | null | undefined): string | null {
+  if (!avatarUrl) return null;
+  if (avatarUrl.startsWith('http')) return avatarUrl;
+  const base = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}`;
+  const url = `${base}${avatarUrl}`;
+  // Add cache-busting to force browser to reload the new avatar
+  return `${url}?t=${Date.now()}`;
+}
 
 type ProfileTab = 'personal' | 'security' | 'preferences';
 
@@ -138,7 +148,6 @@ export default function Profile() {
       const candidate = digits.slice(0, digitLen);
       if (candidate + candidate === digits) {
         digits = candidate;
-        console.warn('[Profile] Deduplicated stored phone digits:', digits, '(original digitLen:', digitLen * 2, ')');
         break;
       }
     }
@@ -149,11 +158,9 @@ export default function Profile() {
         if (digits.slice(0, dl) + digits.slice(0, dl) === digits) { found = true; break; }
       }
       if (!found) {
-        console.warn('[Profile] No dedup pattern found, truncating digits from', digits.length, 'to 10');
         digits = digits.slice(0, 10);
       }
     }
-    console.log('[Profile] useEffect - loading user, phone:', storedPhone, 'digits:', digits);
     const prefixMatch = storedPhone.match(/^(\+\d+)/);
     const prefix = prefixMatch ? prefixMatch[1] : '+84';
     setFormData((prev) => ({
@@ -164,9 +171,7 @@ export default function Profile() {
       phonePrefix: prefix,
     }));
     if (user.avatarUrl) {
-      const url = user.avatarUrl.startsWith('http')
-        ? user.avatarUrl
-        : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${user.avatarUrl}`;
+      const url = getFullAvatarUrl(user.avatarUrl);
       setAvatarPreview(url);
     } else {
       setAvatarPreview(null);
@@ -220,19 +225,20 @@ export default function Profile() {
     try {
       const response = await uploadAvatar(file);
       if (response.success) {
-        setUser(response.user);
+        // Fetch latest user data from database to ensure avatar is updated
+        try {
+          const freshUser = await getMe();
+          setUser(freshUser);
+          localStorage.setItem('user', JSON.stringify(freshUser));
+        } catch {
+          setUser(response.user);
+        }
         toast.success('Avatar updated successfully!');
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Failed to upload avatar';
       toast.error(msg);
-      setAvatarPreview(
-        user?.avatarUrl
-          ? user.avatarUrl.startsWith('http')
-            ? user.avatarUrl
-            : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${user.avatarUrl}`
-          : null
-      );
+      setAvatarPreview(getFullAvatarUrl(user?.avatarUrl));
     } finally {
       setUploadingAvatar(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -250,14 +256,12 @@ export default function Profile() {
         fullPhone = `${formData.phonePrefix}${digits}`;
       }
       const dateOfBirth = dobYear && dobMonth && dobDay ? `${dobYear}-${dobMonth}-${dobDay}` : null;
-      console.log('[Profile] handleSavePersonal - fullPhone:', fullPhone, 'dateOfBirth:', dateOfBirth);
       const response = await updateProfile({
         name: formData.name,
         email: formData.email,
         phone: fullPhone,
         dateOfBirth,
       });
-      console.log('[Profile] updateProfile response:', JSON.stringify(response));
       if (response.success) {
         setUser(response.user);
         toast.success('Profile updated successfully!');
@@ -314,12 +318,7 @@ export default function Profile() {
 
   const getAvatarUrl = () => {
     if (avatarPreview) return avatarPreview;
-    if (user?.avatarUrl) {
-      return user.avatarUrl.startsWith('http')
-        ? user.avatarUrl
-        : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${user.avatarUrl}`;
-    }
-    return null;
+    return getFullAvatarUrl(user?.avatarUrl);
   };
 
   return (

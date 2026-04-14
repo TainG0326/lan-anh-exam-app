@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { login, verifyLoginOTP } from '../services/authService';
+import { login, verifyLoginOTP, getMe } from '../services/authService';
 import { signInWithGoogle } from '../services/supabase';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -56,6 +56,19 @@ export default function Login() {
       navigate('/login', { replace: true });
     }
   }, [isSessionExpired, navigate]);
+
+  // Restore 2FA state from sessionStorage (if user refreshed during 2FA)
+  useEffect(() => {
+    const pendingTempToken = sessionStorage.getItem('pending2FATempToken');
+    const pendingEmail = sessionStorage.getItem('pending2FAEmail');
+
+    if (pendingTempToken && pendingEmail && !requires2FA) {
+      // Restore 2FA flow using saved tempToken
+      setRequires2FA(true);
+      setTempToken(pendingTempToken);
+      setEmail(pendingEmail);
+    }
+  }, [requires2FA]);
 
   // Handle 2FA redirect from Google OAuth
   useEffect(() => {
@@ -144,7 +157,21 @@ export default function Login() {
       const response = await login(email, password);
       if (response.success) {
         localStorage.setItem('sessionActive', Date.now().toString());
-        setUser(response.user);
+        // Fetch latest user data from database to ensure avatar, phone, dateOfBirth are current
+        try {
+          const freshUser = await getMe();
+          const mergedUser = {
+            ...response.user,
+            ...freshUser,
+            id: response.user.id,
+            email: response.user.email,
+          };
+          localStorage.setItem('user', JSON.stringify(mergedUser));
+          setUser(mergedUser);
+        } catch {
+          localStorage.setItem('user', JSON.stringify(response.user));
+          setUser(response.user);
+        }
         // Lưu device token nếu có
         if (response.deviceToken) {
           localStorage.setItem('deviceToken', response.deviceToken);
@@ -160,6 +187,11 @@ export default function Login() {
       } else if (response.requires2FA) {
         setRequires2FA(true);
         setTempToken(response.tempToken || '');
+        // Lưu tempToken để khôi phục nếu refresh trang
+        if (response.tempToken) {
+          sessionStorage.setItem('pending2FATempToken', response.tempToken);
+          sessionStorage.setItem('pending2FAEmail', email);
+        }
         setRequiresSetup(response.requiresSetup || false);
         if (response.twoFactorQrCode) {
           setTwoFactorQrCode(response.twoFactorQrCode);
@@ -184,12 +216,29 @@ export default function Login() {
     try {
       const response = await verifyLoginOTP(email, otp, tempToken, rememberDevice);
       if (response.success) {
-        setUser(response.user);
         localStorage.setItem('sessionActive', Date.now().toString());
+        // Fetch latest user data from database to ensure avatar, phone, dateOfBirth are current
+        try {
+          const freshUser = await getMe();
+          const mergedUser = {
+            ...response.user,
+            ...freshUser,
+            id: response.user.id,
+            email: response.user.email,
+          };
+          localStorage.setItem('user', JSON.stringify(mergedUser));
+          setUser(mergedUser);
+        } catch {
+          localStorage.setItem('user', JSON.stringify(response.user));
+          setUser(response.user);
+        }
         // Lưu device token nếu có (remember device)
         if (response.deviceToken) {
           localStorage.setItem('deviceToken', response.deviceToken);
         }
+        // Clear 2FA session storage
+        sessionStorage.removeItem('pending2FAEmail');
+        sessionStorage.removeItem('pending2FATempToken');
         toast.success('Welcome back!');
         const redirectUrl = sessionStorage.getItem('redirectUrl') || '/dashboard';
         sessionStorage.removeItem('redirectUrl');

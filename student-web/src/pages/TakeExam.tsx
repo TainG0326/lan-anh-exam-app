@@ -64,8 +64,8 @@ export default function TakeExam() {
     // Auto-save answer
     try {
       await submitAnswer(exam.id || exam._id, questionId, answer);
-    } catch (error) {
-      console.error('Failed to save answer:', error);
+    } catch {
+      // Silent fail - auto-save failure shouldn't interrupt user
     }
   };
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getFullAvatarUrl } from '../pages/Profile';
 import { useLanguage } from '../context/LanguageContext';
 import { logout } from '../services/authService';
 import {
@@ -53,6 +54,7 @@ export default function Layout() {
     { path: '/exams', label: t('nav.exams'), icon: FileText },
     { path: '/assignments', label: t('nav.assignments'), icon: BookOpen },
     { path: '/gradebook', label: t('nav.gradebook'), icon: GraduationCap },
+    ...(user?.role === 'admin' ? [{ path: '/admin', label: 'Quản trị', icon: Settings }] : []),
   ];
 
   return (
@@ -189,11 +191,7 @@ export default function Layout() {
                 >
                   {user?.avatarUrl ? (
                     <img
-                      src={
-                        user.avatarUrl.startsWith('http')
-                          ? user.avatarUrl
-                          : `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${user.avatarUrl}`
-                      }
+                      src={getFullAvatarUrl(user.avatarUrl) || ''}
                       alt={user.name}
                       className="h-full w-full object-cover"
                     />

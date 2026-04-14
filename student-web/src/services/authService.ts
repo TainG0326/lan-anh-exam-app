@@ -7,12 +7,15 @@ export interface User {
   role: 'teacher' | 'student';
   classId?: string;
   avatarUrl?: string | null;
+  phone?: string | null;
 }
 
 export interface AuthResponse {
   success: boolean;
   token: string;
   user: User;
+  deviceToken?: string;
+  trustedDevice?: boolean;
 }
 
 export const login = async (email: string, password: string): Promise<AuthResponse> => {
@@ -48,6 +51,7 @@ export const getMe = async (): Promise<User> => {
 export const logout = () => {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
+  localStorage.removeItem('deviceToken');
 };
 
 export const getCurrentUser = (): User | null => {
@@ -62,6 +66,7 @@ export const isAuthenticated = (): boolean => {
 export const updateProfile = async (updateData: {
   name?: string;
   email?: string;
+  phone?: string | null;
   password?: string;
   currentPassword?: string;
   avatar_url?: string | null;
@@ -78,7 +83,7 @@ export const uploadAvatar = async (file: File): Promise<{ success: boolean; avat
   formData.append('avatar', file);
 
   const token = localStorage.getItem('token');
-  const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/avatar`, {
+  const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/auth/avatar`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -97,8 +102,3 @@ export const uploadAvatar = async (file: File): Promise<{ success: boolean; avat
   }
   return data;
 };
-
-
-
-
-

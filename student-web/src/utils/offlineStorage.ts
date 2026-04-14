@@ -26,7 +26,6 @@ export const initOfflineStorage = (): Promise<void> => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => {
-      console.error('Failed to open IndexedDB');
       reject(new Error('Failed to initialize offline storage'));
     };
 
@@ -230,12 +229,10 @@ export const setupNetworkMonitoring = (
   onOffline: () => void
 ) => {
   window.addEventListener('online', () => {
-    console.log('Network reconnected');
     onOnline();
   });
 
   window.addEventListener('offline', () => {
-    console.log('Network disconnected');
     onOffline();
   });
 };
@@ -246,7 +243,6 @@ export const syncOfflineAnswers = async (
   syncFunction: (questionId: string, answer: any) => Promise<void>
 ): Promise<void> => {
   if (!navigator.onLine) {
-    console.log('Network offline, cannot sync');
     return;
   }
 
@@ -257,15 +253,12 @@ export const syncOfflineAnswers = async (
       try {
         await syncFunction(item.questionId, item.answer);
         await markAsSynced(examId, [item.questionId]);
-      } catch (error) {
-        console.error('Failed to sync answer:', error);
+      } catch {
         // Continue with other answers
       }
     }
-
-    console.log(`Synced ${unsynced.length} offline answers`);
-  } catch (error) {
-    console.error('Failed to sync offline answers:', error);
+  } catch {
+    // Silent fail for sync errors
   }
 };
 

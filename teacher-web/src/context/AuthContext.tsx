@@ -19,42 +19,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const initAuth = async () => {
-      console.log('AuthContext: Starting init...');
-      
-      // First, try to get user from localStorage immediately
       const storedUser = getCurrentUser();
-      console.log('AuthContext: storedUser from localStorage:', storedUser);
       if (storedUser) {
         setUser(storedUser);
       }
 
-      // Set a timeout to force loading = false
       const timeoutId = setTimeout(() => {
-        console.log('AuthContext: Timeout reached, setting loading=false');
         setAuthInitializing(false);
         setLoading(false);
       }, AUTH_INIT_TIMEOUT);
 
-      // Try to verify with API if authenticated
       if (isAuthenticated()) {
-        console.log('AuthContext: Token found, calling getMe...');
         try {
           const currentUser = await getMe();
-          console.log('AuthContext: getMe success:', currentUser);
-          setUser(currentUser);
           localStorage.setItem('user', JSON.stringify(currentUser));
-        } catch (error) {
-          console.warn('AuthContext: getMe failed, using cached user:', error);
+          setUser(currentUser);
+        } catch {
+          const currentState = getCurrentUser();
+          if (currentState) {
+            localStorage.setItem('user', JSON.stringify(currentState));
+          }
         }
-      } else {
-        console.log('AuthContext: No token found');
       }
 
-      // Always clear timeout and set loading = false
       clearTimeout(timeoutId);
       setAuthInitializing(false);
       setLoading(false);
-      console.log('AuthContext: Loading complete');
     };
 
     // Small delay to ensure localStorage is ready

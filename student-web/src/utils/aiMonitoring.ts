@@ -16,11 +16,8 @@ let violationFlags: Array<{ type: string; timestamp: number; severity: number }>
 // Initialize BlazeFace model
 export const initAIModel = async (): Promise<void> => {
   try {
-    console.log('Loading BlazeFace model...');
     model = await blazeface.load();
-    console.log('BlazeFace model loaded successfully');
   } catch (error) {
-    console.error('Failed to load BlazeFace model:', error);
     throw error;
   }
 };
@@ -124,7 +121,6 @@ export const startAIMonitoring = async (
   _examId: string
 ): Promise<void> => {
   if (isMonitoring) {
-    console.warn('AI monitoring already started');
     return;
   }
 
@@ -136,28 +132,23 @@ export const startAIMonitoring = async (
   violationFlags = [];
   faceDirectionHistory = [];
 
-  // Monitor at 2 FPS (every 500ms) to reduce CPU usage
   monitoringInterval = window.setInterval(async () => {
     try {
       const faces = await detectFaces(videoElement);
       const violations = checkViolations(faces);
 
-      // Record violations
       violations.forEach(violation => {
         violationFlags.push({
           ...violation,
           timestamp: Date.now(),
         });
 
-        // Send to backend for flagging (not force submit)
         onViolation(violation);
       });
-    } catch (error) {
-      console.error('AI monitoring error:', error);
+    } catch {
+      // Silent fail for monitoring errors
     }
-  }, 500); // 2 FPS
-
-  console.log('AI monitoring started');
+  }, 500);
 };
 
 // Stop AI monitoring
@@ -169,7 +160,6 @@ export const stopAIMonitoring = (): void => {
   isMonitoring = false;
   violationFlags = [];
   faceDirectionHistory = [];
-  console.log('AI monitoring stopped');
 };
 
 // Get violation flags (for teacher review)

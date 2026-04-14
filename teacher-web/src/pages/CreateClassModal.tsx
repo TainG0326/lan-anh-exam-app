@@ -27,22 +27,22 @@ export default function CreateClassModal({ isOpen, onClose, onSuccess }: CreateC
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      toast.error('Vui lòng nhập tên lớp');
+      toast.error('Please enter class name');
       return;
     }
     if (!formData.level.trim()) {
-      toast.error('Vui lòng chọn khối lớp');
+      toast.error('Please select grade level');
       return;
     }
 
     setLoading(true);
     try {
       await createClass(formData);
-      toast.success('Tạo lớp thành công!');
+      toast.success('Class created successfully!');
       onSuccess();
       onClose();
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Tạo lớp thất bại');
+      toast.error(error.response?.data?.message || 'Failed to create class');
     } finally {
       setLoading(false);
     }

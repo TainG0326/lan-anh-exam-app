@@ -129,8 +129,15 @@ export const updateProfile = async (updateData: {
   avatar_url?: string | null;
   phone?: string | null;
   dateOfBirth?: string | null;
+  date_of_birth?: string | null;
 }): Promise<{ success: boolean; user: User }> => {
-  const response = await api.put<{ success: boolean; user: User }>('/auth/profile', updateData);
+  const payload = { ...updateData };
+  // Normalize dateOfBirth -> date_of_birth for server
+  if (payload.dateOfBirth !== undefined) {
+    payload.date_of_birth = payload.dateOfBirth;
+    delete payload.dateOfBirth;
+  }
+  const response = await api.put<{ success: boolean; user: User }>('/auth/profile', payload);
   if (response.data.success) {
     localStorage.setItem('user', JSON.stringify(response.data.user));
   }
@@ -142,7 +149,7 @@ export const uploadAvatar = async (file: File): Promise<{ success: boolean; avat
   formData.append('avatar', file);
 
   const token = localStorage.getItem('token');
-  const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/avatar`, {
+  const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/auth/avatar`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,

@@ -1,18 +1,15 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase, getSupabaseSession } from '../services/supabase';
 import toast from 'react-hot-toast';
-import { useLanguage } from '../context/LanguageContext';
 import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { getMe } from '../services/authService';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export default function AuthCallback() {
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { t } = useLanguage();
-  const [status, setStatus] = useState('Processing authentication...');
+  const [status, setStatus] = useState('Đang xử lý xác thực...');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
@@ -25,22 +22,22 @@ export default function AuthCallback() {
       const error_description = urlObj.searchParams.get('error_description');
 
       if (urlError) {
-        setError('Authentication failed: ' + urlError);
-        toast.error(error_description || 'Authentication failed');
+        setError('Xác thực thất bại: ' + urlError);
+        toast.error(error_description || 'Xác thực thất bại');
         navigate('/login');
         return;
       }
 
-      setStatus('Processing login...');
+      setStatus('Đang xử lý đăng nhập...');
 
       try {
-        let sessionData = null;
+        let sessionData: any = null;
 
         if (code) {
           const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
           if (exchangeError) {
-            // Silent fail, try next method
+            console.log('[AuthCallback] exchangeCodeForSession error:', exchangeError.message);
           } else {
             sessionData = data;
           }
@@ -50,7 +47,7 @@ export default function AuthCallback() {
           const { data: existingSession, error: sessionError } = await getSupabaseSession();
 
           if (sessionError) {
-            // Silent fail, try next method
+            console.log('[AuthCallback] getSupabaseSession error:', sessionError.message);
           } else if (existingSession?.session) {
             sessionData = existingSession;
           }
@@ -64,7 +61,7 @@ export default function AuthCallback() {
             });
 
             if (setSessionError) {
-              // Silent fail
+              console.log('[AuthCallback] setSession error:', setSessionError.message);
             } else {
               sessionData = data;
             }
@@ -76,17 +73,17 @@ export default function AuthCallback() {
         const session = sessionAny?.session || sessionAny?.session;
 
         if (!user || !session) {
-          setError('Unable to authenticate. Please try again.');
+          setError('Không thể xác thực. Vui lòng thử lại.');
+          toast.error('Không thể xác thực với Google. Vui lòng thử lại.');
           return;
         }
 
-        setStatus('Logging into system...');
+        setStatus('Đang đăng nhập vào hệ thống...');
 
         const userEmail = user.email || '';
-        const userName = user.user_metadata?.full_name || user.user_metadata?.name || 'User';
+        const userName = user.user_metadata?.full_name || user.user_metadata?.name || 'Học sinh';
         const userAvatar = user.user_metadata?.avatar_url || null;
 
-        // Lấy device token từ localStorage để gửi kèm request (bypass 2FA nếu đã đăng ký)
         const existingDeviceToken = localStorage.getItem('deviceToken');
 
         const controller = new AbortController();
@@ -94,7 +91,6 @@ export default function AuthCallback() {
 
         let response: Response;
         try {
-          // Headers với device token để bypass 2FA nếu có
           const headers: Record<string, string> = {
             'Content-Type': 'application/json',
           };
@@ -102,6 +98,7 @@ export default function AuthCallback() {
             headers['X-Device-Token'] = existingDeviceToken;
           }
 
+          console.log('[AuthCallback] Sending google-login request for student:', userEmail);
           response = await fetch(API_URL + '/auth/google-login', {
             method: 'POST',
             headers,
@@ -109,22 +106,31 @@ export default function AuthCallback() {
               email: userEmail,
               name: userName,
               avatarUrl: userAvatar,
-              role: 'teacher',
-              rememberDevice: true, // Google login tự động remember device
+              role: 'student',
+              rememberDevice: true,
             }),
             credentials: 'include',
             signal: controller.signal,
           });
 
+          console.log('[AuthCallback] google-login response status:', response.status);
+
           if (!response.ok) {
-            throw new Error('Server error: ' + response.status);
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || 'Server error: ' + response.status);
           }
 
           const result = await response.json();
+          console.log('[AuthCallback] google-login result:', JSON.stringify({
+            success: result.success,
+            requires2FA: result.requires2FA,
+            requiresSetup: result.requiresSetup,
+            message: result.message,
+            hasTempToken: !!result.tempToken,
+          }));
 
           if (result.success) {
             localStorage.setItem('token', result.token);
-            // Fetch latest user data to ensure all fields (avatar, phone, dateOfBirth) are current
             try {
               const freshUser = await getMe();
               localStorage.setItem('user', JSON.stringify(freshUser));
@@ -132,89 +138,99 @@ export default function AuthCallback() {
               localStorage.setItem('user', JSON.stringify(result.user));
             }
             localStorage.setItem('sessionActive', Date.now().toString());
-            // Lưu device token nếu server trả về
             if (result.deviceToken) {
               localStorage.setItem('deviceToken', result.deviceToken);
             }
             setSuccess(true);
-
-            // Nếu là trusted device, hiển thị thông báo
-            if (result.trustedDevice) {
-              setStatus('Trusted device verified! Redirecting...');
-            } else {
-              setStatus('Login successful! Redirecting...');
-            }
-
+            setStatus('Đăng nhập thành công! Đang chuyển hướng...');
             setTimeout(() => {
-              window.location.href = '/dashboard';
+              window.location.href = '/';
             }, 500);
           } else if (result.requires2FA) {
-            // 2FA required - redirect to login page with pre-filled email and QR code data
-            sessionStorage.setItem('pending2FAEmail', userEmail);
-            sessionStorage.setItem('pending2FATempToken', result.tempToken || '');
-            sessionStorage.setItem('pending2FASetup', result.requiresSetup ? 'true' : 'false');
-            if (result.skipSetup) {
-              sessionStorage.setItem('pending2FASkipSetup', 'true');
+            // Store temp token and redirect to 2FA verification page
+            sessionStorage.setItem('2fa_email', userEmail);
+            sessionStorage.setItem('2fa_tempToken', result.tempToken || '');
+            sessionStorage.setItem('2fa_rememberDevice', 'true');
+            
+            // Redirect to 2FA page
+            if (result.requiresSetup) {
+              // First time setup - show QR code
+              toast.error(result.message || 'Vui lòng xác thực 2FA');
+              navigate('/verify-2fa-setup', { 
+                state: { 
+                  email: userEmail, 
+                  tempToken: result.tempToken,
+                  twoFactorSecret: result.twoFactorSecret,
+                  twoFactorQrCode: result.twoFactorQrCode,
+                }
+              });
+            } else {
+              // Verify existing 2FA
+              toast.error(result.message || 'Vui lòng nhập mã xác thực 2FA');
+              navigate('/verify-2fa', { 
+                state: { 
+                  email: userEmail, 
+                  tempToken: result.tempToken,
+                }
+              });
             }
-            // Lưu QR code data nếu có (setup flow)
-            if (result.twoFactorQrCode) {
-              sessionStorage.setItem('pending2FQrCode', result.twoFactorQrCode);
-              sessionStorage.setItem('pending2FSecret', result.twoFactorSecret || '');
-            }
-            setSuccess(true);
-            setStatus('2FA verification required. Redirecting...');
-            setTimeout(() => {
-              window.location.href = '/login?2fa=required';
-            }, 500);
+            return;
           } else {
-            setError(result.message || 'Login failed');
+            setError(result.message || 'Đăng nhập thất bại');
+            toast.error(result.message || 'Đăng nhập thất bại');
           }
         } catch (fetchError: any) {
+          console.error('[AuthCallback] Fetch error:', fetchError);
           if (fetchError.name === 'AbortError') {
-            setError('Request timed out. Please try again.');
+            setError('Yêu cầu hết thời gian. Vui lòng thử lại.');
+            toast.error('Yêu cầu hết thời gian. Vui lòng thử lại.');
           } else if (!window.navigator.onLine) {
-            setError('No internet connection. Please check your network.');
+            setError('Không có kết nối internet. Vui lòng kiểm tra mạng.');
+            toast.error('Không có kết nối internet.');
           } else {
-            setError('Unable to connect to server. Please try again.');
+            setError('Không thể kết nối máy chủ. Vui lòng thử lại.');
+            toast.error('Không thể kết nối máy chủ.');
           }
         } finally {
           clearTimeout(timeoutId);
         }
-      } catch {
-        setError('An unexpected error occurred');
+      } catch (err) {
+        console.error('[AuthCallback] Unexpected error:', err);
+        setError('Đã xảy ra lỗi không mong muốn');
+        toast.error('Đã xảy ra lỗi không mong muốn');
       }
     };
 
     handleCallback();
-  }, [navigate, t]);
+  }, [navigate]);
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center bg-login-gradient">
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="text-center">
         <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-primary flex items-center justify-center">
           {error ? (
-            <XCircle className="w-10 h-10 text-error" />
+            <XCircle className="w-10 h-10 text-white" />
           ) : success ? (
             <CheckCircle className="w-10 h-10 text-white" />
           ) : (
             <Loader2 className="w-10 h-10 text-white animate-spin" />
           )}
         </div>
-        
-        <h1 className="text-xl font-semibold text-text-primary mb-2">
-          {error ? 'Authentication Failed' : 'Processing...'}
+
+        <h1 className="text-xl font-semibold text-gray-800 mb-2">
+          {error ? 'Xác thực thất bại' : 'Đang xử lý...'}
         </h1>
-        
-        <p className="text-text-secondary mb-4">
+
+        <p className="text-gray-500 mb-4">
           {status}
         </p>
-        
+
         {error && (
           <button
             onClick={() => navigate('/login')}
-            className="btn-primary"
+            className="px-6 py-3 bg-primary hover:bg-primary-hover text-white font-semibold rounded-xl transition-colors"
           >
-            Return to Login
+            Quay lại đăng nhập
           </button>
         )}
       </div>

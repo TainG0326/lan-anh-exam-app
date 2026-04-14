@@ -14,6 +14,7 @@ import Gradebook from './pages/Gradebook';
 import Grades from './pages/Grades';
 import Profile from './pages/Profile';
 import AuthCallback from './pages/AuthCallback';
+import AdminDashboard from './pages/AdminDashboard';
 import Layout from './components/Layout';
 import BookLoader from './components/BookLoader';
 
@@ -34,8 +35,32 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     return <Navigate to="/login" replace />;
   }
 
-  if (user.role !== 'teacher') {
+  if (user.role !== 'teacher' && user.role !== 'admin') {
     return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="teacher-app-bg min-h-screen">
+        <div className="teacher-app-bg-overlay min-h-screen flex items-center justify-center">
+          <BookLoader />
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user.role !== 'admin') {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -48,6 +73,14 @@ function AppRoutes() {
       <Route path="/register" element={<Register />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/dashboard" element={<Navigate to="/" replace />} />
+      <Route
+        path="/admin"
+        element={
+          <AdminRoute>
+            <AdminDashboard />
+          </AdminRoute>
+        }
+      />
       <Route
         path="/"
         element={

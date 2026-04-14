@@ -363,22 +363,13 @@ export default function Dashboard() {
 
   // Load data function - định nghĩa TRƯỚC useEffect
   const loadData = async () => {
-    console.log('Dashboard: loadData started');
-    
-    // Set a fallback timeout to ensure loading = false
     const timeoutId = setTimeout(() => {
-      console.log('Dashboard: Timeout - setting loading=false');
       setLoading(false);
     }, 5000);
-    
-    try {
-      console.log('Dashboard: Calling getExams...');
-      const examsData = await getExams();
-      console.log('Dashboard: getExams response:', examsData);
 
-      console.log('Dashboard: Calling getClasses...');
+    try {
+      const examsData = await getExams();
       const classesData = await getClasses();
-      console.log('Dashboard: getClasses response:', classesData);
 
       // Process classes
       const processedClasses = classesData.map((cls: any) => ({
@@ -431,23 +422,16 @@ export default function Dashboard() {
         avgScore: 0,
         passRate: 0,
       });
-      console.log('Dashboard: loadData completed successfully');
     } catch (error: any) {
-      console.error('Dashboard: loadData failed:', error);
-      // Show error toast but still render the dashboard
       toast.error('Failed to load data: ' + (error.message || 'Unknown error'));
     } finally {
-      console.log('Dashboard: loadData finally - setting loading=false');
       clearTimeout(timeoutId);
       setLoading(false);
     }
   };
 
-  // Chờ auth load xong mới gọi API
   useEffect(() => {
-    console.log('Dashboard: Auth loading =', authLoading);
     if (!authLoading) {
-      console.log('Dashboard: Calling loadData...');
       loadData();
     }
   }, [authLoading]);

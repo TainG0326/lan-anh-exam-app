@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Bell, CheckCircle, AlertCircle, Info, X } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import api from '../services/api';
@@ -15,6 +16,7 @@ interface Notification {
 }
 
 export default function Notifications() {
+  const { t } = useLanguage();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
@@ -25,16 +27,12 @@ export default function Notifications() {
 
   const loadNotifications = async () => {
     try {
-      // TODO: Implement notifications API endpoint in backend
-      // For now, return empty array - no demo data
       const response = await api.get<{ success: boolean; notifications: Notification[] }>('/notifications').catch(() => {
-        // If endpoint doesn't exist, return empty array
         return { data: { success: true, notifications: [] } };
       });
       setNotifications(response.data.notifications || []);
-    } catch (error: any) {
-      toast.error('Failed to load notifications');
-      console.error('Error loading notifications:', error);
+    } catch {
+      toast.error(t('toast.loadDataFailed') || 'Failed to load notifications');
       setNotifications([]);
     } finally {
       setLoading(false);
@@ -43,14 +41,11 @@ export default function Notifications() {
 
   const markAsRead = async (id: string) => {
     try {
-      await api.patch(`/notifications/${id}/read`).catch(() => {
-        // If endpoint doesn't exist, just update locally
-      });
+      await api.patch(`/notifications/${id}/read`).catch(() => {});
       setNotifications((prev) =>
         prev.map((notif) => (notif.id === id ? { ...notif, read: true } : notif))
       );
-    } catch (error) {
-      // Update locally even if API fails
+    } catch {
       setNotifications((prev) =>
         prev.map((notif) => (notif.id === id ? { ...notif, read: true } : notif))
       );
@@ -59,12 +54,10 @@ export default function Notifications() {
 
   const markAllAsRead = async () => {
     try {
-      await api.patch('/notifications/read-all').catch(() => {
-        // If endpoint doesn't exist, just update locally
-      });
+      await api.patch('/notifications/read-all').catch(() => {});
       setNotifications((prev) => prev.map((notif) => ({ ...notif, read: true })));
       toast.success('All notifications marked as read');
-    } catch (error) {
+    } catch {
       setNotifications((prev) => prev.map((notif) => ({ ...notif, read: true })));
       toast.success('All notifications marked as read');
     }
@@ -72,12 +65,10 @@ export default function Notifications() {
 
   const deleteNotification = async (id: string) => {
     try {
-      await api.delete(`/notifications/${id}`).catch(() => {
-        // If endpoint doesn't exist, just update locally
-      });
+      await api.delete(`/notifications/${id}`).catch(() => {});
       setNotifications((prev) => prev.filter((notif) => notif.id !== id));
       toast.success('Notification deleted');
-    } catch (error) {
+    } catch {
       setNotifications((prev) => prev.filter((notif) => notif.id !== id));
       toast.success('Notification deleted');
     }
@@ -86,33 +77,33 @@ export default function Notifications() {
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'exam':
-        return <AlertCircle className="w-5 h-5 text-blue-600" />;
+        return <AlertCircle className="w-5 h-5 text-error" />;
       case 'assignment':
-        return <Info className="w-5 h-5 text-amber-600" />;
+        return <Info className="w-5 h-5 text-warning" />;
       case 'grade':
-        return <CheckCircle className="w-5 h-5 text-green-600" />;
+        return <CheckCircle className="w-5 h-5 text-success" />;
       default:
-        return <Bell className="w-5 h-5 text-gray-600" />;
+        return <Bell className="w-5 h-5 text-info" />;
     }
   };
 
   const getNotificationColor = (type: string) => {
     switch (type) {
       case 'exam':
-        return 'bg-blue-50 border-blue-200';
+        return 'bg-error/10 border-error/20';
       case 'assignment':
-        return 'bg-amber-50 border-amber-200';
+        return 'bg-warning/10 border-warning/20';
       case 'grade':
-        return 'bg-green-50 border-green-200';
+        return 'bg-success/10 border-success/20';
       default:
-        return 'bg-gray-50 border-gray-200';
+        return 'bg-info/10 border-info/20';
     }
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="animate-pulse text-gray-600">Loading...</div>
+        <div className="animate-spin h-10 w-10 border-3 border-primary border-t-transparent rounded-full" />
       </div>
     );
   }
@@ -129,57 +120,61 @@ export default function Notifications() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Notifications</h1>
-          <p className="text-gray-600">View all notifications and latest updates</p>
+          <h1 className="text-2xl font-bold text-text-primary mb-1">
+            {t('notifications.title') || 'Notifications'}
+          </h1>
+          <p className="text-text-secondary text-sm">
+            {t('notifications.all') || 'View all notifications and latest updates'}
+          </p>
         </div>
         {unreadCount > 0 && (
           <button
             onClick={markAllAsRead}
-            className="px-4 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10 rounded-xl transition-colors"
           >
-            Mark all as read
+            {t('notifications.markAllRead') || 'Mark all as read'}
           </button>
         )}
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-2 border-b border-gray-200">
+      <div className="flex gap-2">
         <button
           onClick={() => setFilter('all')}
-          className={`px-4 py-2 font-semibold text-sm transition-colors ${
+          className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
             filter === 'all'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-gray-600 hover:text-gray-900'
+              ? 'bg-primary text-white'
+              : 'bg-white border border-border text-text-secondary hover:bg-background'
           }`}
         >
-          All ({notifications.length})
+          {t('notifications.all') || 'All'} ({notifications.length})
         </button>
         <button
           onClick={() => setFilter('unread')}
-          className={`px-4 py-2 font-semibold text-sm transition-colors ${
+          className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
             filter === 'unread'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-gray-600 hover:text-gray-900'
+              ? 'bg-primary text-white'
+              : 'bg-white border border-border text-text-secondary hover:bg-background'
           }`}
         >
-          Unread ({unreadCount})
+          {t('notifications.unread') || 'Unread'} ({unreadCount})
         </button>
       </div>
 
       {/* Notifications List */}
-      <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
-        {filteredNotifications.length > 0 ? (
-          <div className="divide-y divide-gray-100">
+      {filteredNotifications.length > 0 ? (
+        <div className="card overflow-hidden">
+          <div className="divide-y divide-border">
             {filteredNotifications.map((notification) => (
               <div
                 key={notification.id}
-                className={`p-5 hover:bg-gray-50 transition-colors ${
-                  !notification.read ? 'bg-blue-50/30' : ''
+                className={`p-5 hover:bg-background transition-colors ${
+                  !notification.read ? 'bg-primary/5' : ''
                 }`}
               >
                 <div className="flex items-start gap-4">
                   <div
-                    className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${getNotificationColor(
+                    className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 border ${getNotificationColor(
                       notification.type
                     )}`}
                   >
@@ -189,23 +184,23 @@ export default function Notifications() {
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-lg font-semibold text-gray-900">
+                          <h3 className="text-sm font-semibold text-text-primary">
                             {notification.title}
                           </h3>
                           {!notification.read && (
-                            <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
+                            <span className="w-2 h-2 bg-primary rounded-full shrink-0"></span>
                           )}
                         </div>
-                        <p className="text-gray-600 mb-2">{notification.message}</p>
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-text-secondary mb-2">{notification.message}</p>
+                        <p className="text-xs text-text-muted">
                           {format(new Date(notification.timestamp), 'MMM dd, yyyy HH:mm')}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 shrink-0">
                         {!notification.read && (
                           <button
                             onClick={() => markAsRead(notification.id)}
-                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            className="p-2 text-text-muted hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
                             title="Mark as read"
                           >
                             <CheckCircle className="w-5 h-5" />
@@ -213,7 +208,7 @@ export default function Notifications() {
                         )}
                         <button
                           onClick={() => deleteNotification(notification.id)}
-                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          className="p-2 text-text-muted hover:text-error hover:bg-error/10 rounded-lg transition-colors"
                           title="Delete"
                         >
                           <X className="w-5 h-5" />
@@ -223,9 +218,9 @@ export default function Notifications() {
                     {notification.link && (
                       <a
                         href={notification.link}
-                        className="inline-block mt-3 text-sm font-semibold text-blue-600 hover:text-blue-700"
+                        className="inline-block mt-3 text-sm font-semibold text-primary hover:underline"
                       >
-                        View details →
+                        {t('common.viewDetails') || 'View details'} →
                       </a>
                     )}
                   </div>
@@ -233,22 +228,24 @@ export default function Notifications() {
               </div>
             ))}
           </div>
-        ) : (
-          <div className="p-12 text-center">
-            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-              <Bell className="w-8 h-8 text-gray-400" />
-            </div>
-            <p className="text-gray-700 font-medium mb-1">
-              {filter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
-            </p>
-            <p className="text-sm text-gray-500">
-              {filter === 'unread'
-                ? 'All notifications have been read'
-                : 'You will receive notifications when there are new updates'}
-            </p>
+        </div>
+      ) : (
+        <div className="card p-12 text-center">
+          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+            <Bell className="w-8 h-8 text-primary" />
           </div>
-        )}
-      </div>
+          <p className="text-text-primary font-semibold mb-1">
+            {filter === 'unread' 
+              ? 'No unread notifications' 
+              : t('notifications.empty') || 'No notifications yet'}
+          </p>
+          <p className="text-sm text-text-secondary">
+            {filter === 'unread'
+              ? 'All notifications have been read'
+              : 'You will receive notifications when there are new updates'}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
