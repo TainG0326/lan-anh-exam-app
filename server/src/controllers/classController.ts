@@ -259,3 +259,36 @@ export const updateClass = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const removeStudentFromClass = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id, studentId } = req.params;
+
+    const classDoc = await ClassDB.findById(id);
+    if (!classDoc) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy lớp.',
+      });
+    }
+
+    if (classDoc.teacher_id !== req.user!.id && req.user!.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Không có quyền thực hiện.',
+      });
+    }
+
+    await ClassDB.removeStudent(id, studentId);
+
+    res.json({
+      success: true,
+      message: 'Đã xóa học sinh khỏi lớp.',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi khi xóa học sinh.',
+    });
+  }
+};
+

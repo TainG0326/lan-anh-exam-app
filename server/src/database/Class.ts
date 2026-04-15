@@ -140,5 +140,15 @@ export const ClassDB = {
     if (error || !data) return null;
     return data as Class;
   },
+
+  async removeStudent(classId: string, studentId: string): Promise<void> {
+    const { error } = await supabase
+      .from('class_students')
+      .delete()
+      .eq('class_id', classId)
+      .eq('student_id', studentId);
+
+    if (error) throw error;
+  },
 };
 
