@@ -39,3 +39,20 @@ export const addStudentToClass = async (classId: string, studentId: string) => {
   return response.data;
 };
 
+export const updateClass = async (classId: string, classData: { name?: string; grade?: string; level?: string; is_locked?: boolean }) => {
+  console.log('[classService] updateClass payload:', classId, classData);
+  const response = await api.put<{ success: boolean; class: Class }>(
+    `/classes/${classId}`,
+    classData
+  );
+  return response.data;
+};
+
+export const removeStudentFromClass = async (classId: string, studentId: string) => {
+  console.log('[classService] removeStudentFromClass:', classId, studentId);
+  const response = await api.delete<{ success: boolean; message: string }>(
+    `/classes/${classId}/students/${studentId}`
+  );
+  return response.data;
+};
+

@@ -34,7 +34,7 @@ const GlassCard: React.FC<GlassCardProps> = ({
       className={`
         relative
         bg-white/20
-        backdrop-blur-xl
+        backdrop-blur-sm
         border border-white/30
         shadow-xl
         rounded-3xl
