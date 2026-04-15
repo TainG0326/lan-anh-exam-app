@@ -52,18 +52,14 @@ export default function AuthCallback() {
       if (urlError) {
         setError('Xác thực thất bại: ' + urlError);
         toast.error(error_description || 'Xác thực thất bại');
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
+        window.location.href = '/login';
         return;
       }
 
       if (!code && !hashAccessToken) {
         setError('Không nhận được mã xác thực từ Google');
         toast.error('Không nhận được mã xác thực từ Google');
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
+        window.location.href = '/login';
         return;
       }
 
@@ -151,9 +147,7 @@ export default function AuthCallback() {
         if (!supabaseUser || !supabaseSession) {
           setError('Không thể xác thực với Google. Vui lòng thử lại.');
           toast.error('Không thể xác thực với Google. Vui lòng thử lại.');
-          if (window.location.pathname !== '/login') {
-            window.location.href = '/login';
-          }
+          window.location.href = '/login';
           return;
         }
 
@@ -189,15 +183,11 @@ export default function AuthCallback() {
               setError(errorData.message || 'Email đã được đăng ký với vai trò khác.');
               toast.error(errorData.message || 'Email đã được đăng ký với vai trò khác.');
               await supabase.auth.signOut();
-              if (window.location.pathname !== '/login') {
-                window.location.href = '/login';
-              }
+              window.location.href = '/login';
             } else {
               setError(errorData.message || 'Lỗi server. Vui lòng thử lại.');
               toast.error(errorData.message || 'Lỗi server. Vui lòng thử lại.');
-              if (window.location.pathname !== '/login') {
-                window.location.href = '/login';
-              }
+              window.location.href = '/login';
             }
             return;
           }
@@ -211,29 +201,20 @@ export default function AuthCallback() {
             if (result.deviceToken) localStorage.setItem('deviceToken', result.deviceToken);
             setSuccess(true);
             setStatus('Đăng nhập thành công!');
-            if (window.location.pathname !== '/') {
-              window.location.href = '/';
-            }
+            window.location.href = '/';
           } else if (result.requires2FA) {
             sessionStorage.setItem('2fa_email', userEmail);
             sessionStorage.setItem('2fa_tempToken', result.tempToken || '');
             sessionStorage.setItem('2fa_rememberDevice', 'true');
-            const twoFactorPath = result.requiresSetup ? '/verify-2fa-setup' : '/verify-2fa';
-            if (window.location.pathname !== twoFactorPath) {
-              window.location.href = twoFactorPath;
-            }
+            window.location.href = result.requiresSetup ? '/verify-2fa-setup' : '/verify-2fa';
           } else if (result.roleMismatch) {
             setError(result.message || 'Vai trò không phù hợp.');
             toast.error(result.message || 'Vai trò không phù hợp.');
-            if (window.location.pathname !== '/login') {
-              window.location.href = '/login';
-            }
+            window.location.href = '/login';
           } else {
             setError(result.message || 'Đăng nhập thất bại.');
             toast.error(result.message || 'Đăng nhập thất bại.');
-            if (window.location.pathname !== '/login') {
-              window.location.href = '/login';
-            }
+            window.location.href = '/login';
           }
         } catch (fetchError: any) {
           clearTimeout(timeoutId);
@@ -248,17 +229,13 @@ export default function AuthCallback() {
             setError(errorMessage);
             toast.error(errorMessage);
           }
-          if (window.location.pathname !== '/login') {
-            window.location.href = '/login';
-          }
+          window.location.href = '/login';
         }
       } catch (err) {
         console.error('[AuthCallback] Unexpected error:', err);
         setError('Đã xảy ra lỗi không mong muốn');
         toast.error('Đã xảy ra lỗi không mong muốn');
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
+        window.location.href = '/login';
       }
     };
 

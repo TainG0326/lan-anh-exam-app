@@ -12,10 +12,11 @@ export interface Class {
   updated_at?: string;
 }
 
-export const joinClassByCode = async (classCode: string) => {
+export const joinClassByCode = async (classCode: string, signal?: AbortSignal) => {
   const response = await api.post<{ success: boolean; message: string; class: Class }>(
     '/classes/join',
-    { classCode }
+    { classCode },
+    signal ? { signal } : {}
   );
   return response.data;
 };

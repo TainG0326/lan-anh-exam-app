@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
@@ -20,6 +20,12 @@ import BookLoader from './components/BookLoader';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
+
+  // If on OAuth callback page, NEVER redirect — let AuthCallback handle it
+  if (location.pathname === '/auth/callback') {
+    return <>{children}</>;
+  }
 
   if (loading) {
     return (
@@ -44,6 +50,11 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
+
+  if (location.pathname === '/auth/callback') {
+    return <>{children}</>;
+  }
 
   if (loading) {
     return (

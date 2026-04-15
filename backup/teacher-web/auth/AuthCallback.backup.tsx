@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, getSupabaseSession } from '../services/supabase';
 import toast from 'react-hot-toast';
@@ -15,12 +15,8 @@ export default function AuthCallback() {
   const [status, setStatus] = useState('Processing authentication...');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const processedRef = useRef(false);
 
   useEffect(() => {
-    if (processedRef.current) return;
-    processedRef.current = true;
-
     const handleCallback = async () => {
       const fullUrl = window.location.href;
       const urlObj = new URL(fullUrl);
@@ -31,7 +27,7 @@ export default function AuthCallback() {
       if (urlError) {
         setError('Authentication failed: ' + urlError);
         toast.error(error_description || 'Authentication failed');
-        window.location.href = '/login';
+        navigate('/login');
         return;
       }
 
@@ -141,23 +137,35 @@ export default function AuthCallback() {
               localStorage.setItem('deviceToken', result.deviceToken);
             }
             setSuccess(true);
-            setStatus('Login successful! Redirecting...');
 
-            localStorage.setItem('authRedirectUrl', '/dashboard');
+            // Nếu là trusted device, hiển thị thông báo
+            if (result.trustedDevice) {
+              setStatus('Trusted device verified! Redirecting...');
+            } else {
+              setStatus('Login successful! Redirecting...');
+            }
+
+            setTimeout(() => {
+              window.location.href = '/dashboard';
+            }, 500);
           } else if (result.requires2FA) {
+            // 2FA required - redirect to login page with pre-filled email and QR code data
             sessionStorage.setItem('pending2FAEmail', userEmail);
             sessionStorage.setItem('pending2FATempToken', result.tempToken || '');
             sessionStorage.setItem('pending2FASetup', result.requiresSetup ? 'true' : 'false');
             if (result.skipSetup) {
               sessionStorage.setItem('pending2FASkipSetup', 'true');
             }
+            // Lưu QR code data nếu có (setup flow)
             if (result.twoFactorQrCode) {
               sessionStorage.setItem('pending2FQrCode', result.twoFactorQrCode);
               sessionStorage.setItem('pending2FSecret', result.twoFactorSecret || '');
             }
             setSuccess(true);
             setStatus('2FA verification required. Redirecting...');
-            localStorage.setItem('authRedirectUrl', '/login?2fa=required');
+            setTimeout(() => {
+              window.location.href = '/login?2fa=required';
+            }, 500);
           } else {
             setError(result.message || 'Login failed');
           }
@@ -167,6 +175,7 @@ export default function AuthCallback() {
           } else if (!window.navigator.onLine) {
             setError('No internet connection. Please check your network.');
           } else {
+            // Backend error message (e.g. roleMismatch, whitelist rejection)
             setError(fetchError.message || 'Login failed. Please try again.');
           }
         } finally {
@@ -179,29 +188,6 @@ export default function AuthCallback() {
 
     handleCallback();
   }, [navigate, t]);
-
-  // Separate effect to handle redirect after state updates have settled
-  useEffect(() => {
-    if (!success && !error) return;
-
-    // Small delay to let state settle
-    const timer = setTimeout(() => {
-      const redirectUrl = localStorage.getItem('authRedirectUrl');
-      if (redirectUrl) {
-        localStorage.removeItem('authRedirectUrl');
-        // Clear OAuth params from URL before redirecting
-        const url = new URL(window.location.href);
-        url.search = '';
-        url.hash = '';
-        window.history.replaceState({}, '', url.pathname);
-        window.location.href = redirectUrl;
-      } else if (error) {
-        window.location.href = '/login';
-      }
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [success, error]);
 
   return (
     <div className="min-h-[100dvh] flex items-center justify-center bg-login-gradient">

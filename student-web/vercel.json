@@ -8,6 +8,7 @@
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "env": {
-    "VITE_API_URL": "https://english-exam-api-oksd.onrender.com/api"
+    "VITE_API_URL": "https://english-exam-api-oksd.onrender.com/api",
+    "VITE_REDIRECT_URL": "https://student-web-sigma.vercel.app/auth/callback"
   }
 }

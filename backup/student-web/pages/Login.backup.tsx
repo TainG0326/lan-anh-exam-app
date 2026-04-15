@@ -38,15 +38,7 @@ export default function Login() {
 
   useEffect(() => {
     if (user) {
-      if (user.role === 'student') {
-        if (window.location.pathname !== '/') {
-          window.location.href = '/';
-        }
-      } else {
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
-      }
+      window.location.href = '/';
     }
   }, [user]);
 

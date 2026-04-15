@@ -4,7 +4,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'teacher' | 'student';
+  role: 'teacher' | 'student' | 'admin';
   classId?: string;
   avatarUrl?: string | null;
   phone?: string | null;
@@ -28,16 +28,22 @@ export interface AuthResponse {
 }
 
 export const login = async (email: string, password: string): Promise<AuthResponse> => {
-  const response = await api.post<AuthResponse>('/auth/login', { email, password });
+  const headers: Record<string, string> = {};
+  const deviceToken = localStorage.getItem('deviceToken');
+  if (deviceToken) {
+    headers['X-Device-Token'] = deviceToken;
+  }
+
+  const response = await api.post<AuthResponse>('/auth/login', { email, password }, headers ? { headers } : undefined);
   if (response.data.success && response.data.token) {
     localStorage.setItem('token', response.data.token);
     localStorage.setItem('user', JSON.stringify(response.data.user));
-    // Lưu device token nếu có (trusted device bypass 2FA)
-    if (response.data.deviceToken) {
-      localStorage.setItem('deviceToken', response.data.deviceToken);
-    }
   }
-  // If requires2FA, don't store token yet - user must complete 2FA first
+  // IMPORTANT: Always save deviceToken when server returns it (including on requires2FA response)
+  // This ensures trusted device works even after 2FA is set up
+  if (response.data.deviceToken) {
+    localStorage.setItem('deviceToken', response.data.deviceToken);
+  }
   return response.data;
 };
 

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { User, getCurrentUser, isAuthenticated, getMe } from '../services/authService';
+import { setAuthInitializing } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
@@ -19,31 +20,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initDoneRef.current = true;
 
     const initAuth = async () => {
-      try {
-        const storedUser = getCurrentUser();
-        if (storedUser) {
-          setUser(storedUser);
-          setLoading(false);
-          return;
-        }
+      const storedUser = getCurrentUser();
+      if (storedUser) {
+        setUser(storedUser);
+        setLoading(false);
+        setAuthInitializing(false);
+        return;
+      }
 
-        if (isAuthenticated()) {
-          try {
-            const currentUser = await getMe();
-            setUser(currentUser);
-            localStorage.setItem('user', JSON.stringify(currentUser));
-          } catch {
-            const cachedUser = getCurrentUser();
-            if (cachedUser) {
-              setUser(cachedUser);
-            } else {
-              localStorage.removeItem('token');
-            }
+      if (isAuthenticated()) {
+        try {
+          const currentUser = await getMe();
+          setUser(currentUser);
+          localStorage.setItem('user', JSON.stringify(currentUser));
+        } catch {
+          const cachedUser = getCurrentUser();
+          if (cachedUser) {
+            setUser(cachedUser);
           }
         }
-      } finally {
-        setLoading(false);
       }
+
+      setLoading(false);
+      setAuthInitializing(false);
     };
 
     initAuth();

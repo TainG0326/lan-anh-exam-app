@@ -1,11 +1,11 @@
 // ============================================================
 // Whitelist Management Page
-// Quản lý danh sách email được phép đăng ký
+// Uses server API (adminWhitelistApi) for all operations
 // ============================================================
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { getSupabaseAdmin } from "@/lib/supabase";
+import { adminWhitelistApi, WhitelistEntry } from "@/lib/api";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -28,26 +28,16 @@ import {
   Copy,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-
-// ========== Types ==========
-interface WhitelistEmail {
-  id: string;
-  email: string;
-  name?: string;
-  role?: string;
-  is_active?: boolean;
-  created_at: string;
-  updated_at?: string;
-}
 
 // ========== Pagination ==========
 const PAGE_SIZE = 15;
 
 // ========== Main Component ==========
 export default function WhitelistPage() {
-  const [whitelist, setWhitelist] = useState<WhitelistEmail[]>([]);
+  const [whitelist, setWhitelist] = useState<WhitelistEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -65,32 +55,22 @@ export default function WhitelistPage() {
   const [addMode, setAddMode] = useState<"single" | "bulk">("single");
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Fetch data
+  // ========== Fetch data from server API ==========
   const fetchWhitelist = useCallback(async () => {
     setLoading(true);
     try {
-      let query = getSupabaseAdmin()
-        .from("email_whitelist")
-        .select("*", { count: "exact" })
-        .eq("is_active", true)
-        .order("created_at", { ascending: false });
-
-      if (search) {
-        query = query.ilike("email", `%${search}%`);
-      }
-
-      const from = (page - 1) * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-      query = query.range(from, to);
-
-      const { data, error, count } = await query;
-
-      if (error) throw error;
-
-      setWhitelist(data || []);
-      setTotalCount(count || 0);
+      const result = await adminWhitelistApi.list(
+        undefined, // all roles
+        page,
+        search || undefined,
+        PAGE_SIZE
+      );
+      setWhitelist(result.data || []);
+      setTotalCount(result.total || 0);
     } catch (error: any) {
       toast.error(`Error loading whitelist: ${error.message}`);
+      setWhitelist([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
@@ -106,22 +86,21 @@ export default function WhitelistPage() {
 
   // ========== Actions ==========
 
-  /** Thêm email mới */
+  /** Add single email */
   const handleAddEmail = async () => {
     setActionLoading(true);
     try {
       if (addMode === "single") {
         if (!newEmail.trim()) {
           toast.error("Please enter an email address");
+          setActionLoading(false);
           return;
         }
 
-        const { error } = await getSupabaseAdmin()
-          .from("email_whitelist")
-          .insert([{ email: newEmail.trim().toLowerCase(), role: newRole, is_active: true }]);
-
-        if (error) throw error;
-
+        await adminWhitelistApi.add(
+          newEmail.trim().toLowerCase(),
+          newRole
+        );
         toast.success(`${newEmail} has been added to the whitelist`);
         setNewEmail("");
       } else {
@@ -133,22 +112,12 @@ export default function WhitelistPage() {
 
         if (emails.length === 0) {
           toast.error("No valid emails found");
+          setActionLoading(false);
           return;
         }
 
-        const records = emails.map((email) => ({
-          email,
-          role: newRole,
-          is_active: true,
-        }));
-
-        const { error } = await getSupabaseAdmin()
-          .from("email_whitelist")
-          .insert(records);
-
-        if (error) throw error;
-
-        toast.success(`${emails.length} emails have been added to the whitelist`);
+        const result = await adminWhitelistApi.bulkAdd(emails, newRole);
+        toast.success(`${result.added} emails added. ${result.failed} failed.`);
         setBulkEmails("");
       }
 
@@ -161,17 +130,12 @@ export default function WhitelistPage() {
     }
   };
 
-  /** Xóa email khỏi whitelist */
-  const handleDeleteEmail = async (email: string, id: string) => {
+  /** Delete email */
+  const handleDeleteEmail = async (email: string, role?: string) => {
     try {
-      const { error } = await getSupabaseAdmin()
-        .from("email_whitelist")
-        .update({ is_active: false, updated_at: new Date().toISOString() })
-        .eq("id", id);
-
-      if (error) throw error;
-
-      setWhitelist((prev) => prev.filter((item) => item.id !== id));
+      await adminWhitelistApi.remove(email, role || "student");
+      setWhitelist((prev) => prev.filter((item) => item.email !== email));
+      setTotalCount((prev) => prev - 1);
       toast.success(`${email} has been removed from the whitelist`);
     } catch (error: any) {
       toast.error(`Failed to delete email: ${error.message}`);
@@ -207,10 +171,16 @@ export default function WhitelistPage() {
             Control which email addresses are allowed to register on the platform.
           </p>
         </div>
-        <Button onClick={() => setAddDialogOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Add Email
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={fetchWhitelist}>
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+          <Button onClick={() => setAddDialogOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Add Email
+          </Button>
+        </div>
       </div>
 
       {/* Info Banner */}
@@ -307,7 +277,7 @@ export default function WhitelistPage() {
                             Copy
                           </button>
                           <button
-                            onClick={() => handleDeleteEmail(item.email, item.id)}
+                            onClick={() => handleDeleteEmail(item.email, item.role)}
                             className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
                           >
                             <Trash2 className="h-3.5 w-3.5" />

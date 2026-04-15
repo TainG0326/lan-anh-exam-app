@@ -61,7 +61,7 @@ export default function DashboardPage() {
         supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "teacher"),
         supabase.from("exams").select("id", { count: "exact", head: true }).eq("status", "active"),
         // AI tokens - sum from ai_usage_logs
-        supabase.from("ai_usage_logs").select("total_tokens", { count: "total" }),
+        supabase.from("ai_usage_logs").select("total_tokens", { count: "exact" }),
 
         // Recent profile registrations (last 10)
         supabase

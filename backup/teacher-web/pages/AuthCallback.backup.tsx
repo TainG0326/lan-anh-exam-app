@@ -182,25 +182,11 @@ export default function AuthCallback() {
 
   // Separate effect to handle redirect after state updates have settled
   useEffect(() => {
-    if (!success && !error) return;
-
-    // Small delay to let state settle
-    const timer = setTimeout(() => {
-      const redirectUrl = localStorage.getItem('authRedirectUrl');
-      if (redirectUrl) {
-        localStorage.removeItem('authRedirectUrl');
-        // Clear OAuth params from URL before redirecting
-        const url = new URL(window.location.href);
-        url.search = '';
-        url.hash = '';
-        window.history.replaceState({}, '', url.pathname);
-        window.location.href = redirectUrl;
-      } else if (error) {
-        window.location.href = '/login';
-      }
-    }, 100);
-
-    return () => clearTimeout(timer);
+    const redirectUrl = localStorage.getItem('authRedirectUrl');
+    if (redirectUrl) {
+      localStorage.removeItem('authRedirectUrl');
+      window.location.href = redirectUrl;
+    }
   }, [success, error]);
 
   return (

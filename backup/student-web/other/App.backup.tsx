@@ -21,7 +21,6 @@ import Layout from './components/Layout';
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
   const hasToken = !!localStorage.getItem('token');
-  const currentPath = window.location.pathname;
 
   if (loading) {
     return (
@@ -32,10 +31,11 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   }
 
   if (!user && !hasToken) {
-    if (currentPath !== '/login') {
-      return <Navigate to="/login" replace />;
-    }
-    return null;
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user && user.role !== 'student') {
+    return <Navigate to="/login" replace />;
   }
 
   if (!user && hasToken) {
@@ -44,13 +44,6 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
       </div>
     );
-  }
-
-  if (user && user.role !== 'student') {
-    if (currentPath !== '/login') {
-      return <Navigate to="/login" replace />;
-    }
-    return null;
   }
 
   return <>{children}</>;
