@@ -1,5 +1,5 @@
 import express from 'express';
-import { createClass, getClasses, getClassById, addStudentToClass, joinClassByCode, getClassByCode, getMyClass } from '../controllers/classController.js';
+import { createClass, getClasses, getClassById, addStudentToClass, joinClassByCode, getClassByCode, getMyClass, updateClass } from '../controllers/classController.js';
 import { protect, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -10,6 +10,7 @@ router.use(protect);
 router.post('/', authorize('teacher'), createClass);
 router.get('/', authorize('teacher'), getClasses);
 router.get('/:id', authorize('teacher'), getClassById);
+router.put('/:id', authorize('teacher'), updateClass);
 router.post('/:classId/students', authorize('teacher'), addStudentToClass);
 
 // Student routes

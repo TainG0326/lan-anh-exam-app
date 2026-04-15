@@ -119,5 +119,26 @@ export const ClassDB = {
     if (error || !data) return null;
     return data as Class;
   },
+
+  async update(
+    id: string,
+    updates: { name?: string; grade?: string; level?: string; is_locked?: boolean }
+  ): Promise<Class | null> {
+    const updateData: Record<string, any> = {};
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.grade !== undefined) updateData.grade = updates.grade;
+    if (updates.level !== undefined) updateData.level = updates.level;
+    if (updates.is_locked !== undefined) updateData.is_locked = updates.is_locked;
+
+    const { data, error } = await supabase
+      .from('classes')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error || !data) return null;
+    return data as Class;
+  },
 };
 

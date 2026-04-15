@@ -219,3 +219,43 @@ export const getMyClass = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const updateClass = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name, grade, level, is_locked } = req.body;
+
+    const classDoc = await ClassDB.findById(id);
+    if (!classDoc) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy lớp.',
+      });
+    }
+
+    if (classDoc.teacher_id !== req.user!.id && req.user!.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Không có quyền cập nhật lớp này.',
+      });
+    }
+
+    const updatedClass = await ClassDB.update(id, { name, grade, level, is_locked });
+    if (!updatedClass) {
+      return res.status(500).json({
+        success: false,
+        message: 'Lỗi khi cập nhật lớp.',
+      });
+    }
+
+    res.json({
+      success: true,
+      class: updatedClass,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi khi cập nhật lớp.',
+    });
+  }
+};
+
