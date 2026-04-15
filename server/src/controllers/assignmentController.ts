@@ -43,7 +43,14 @@ export const getAssignments = async (req: AuthRequest, res: Response) => {
     if (role === 'teacher') {
       assignments = await AssignmentDB.findByTeacherId(req.user!.id);
     } else {
-      assignments = await AssignmentDB.findByClassId(req.user!.class_id || '');
+      // Student without a class has no assignments to fetch
+      if (!req.user!.class_id) {
+        return res.json({
+          success: true,
+          assignments: [],
+        });
+      }
+      assignments = await AssignmentDB.findByClassId(req.user!.class_id);
     }
 
     res.json({

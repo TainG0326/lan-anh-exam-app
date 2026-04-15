@@ -1,21 +1,30 @@
-﻿import { Response } from 'express';
+import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import { ExamDB, Exam } from '../database/Exam.js';
 import { ExamAttemptDB } from '../database/ExamAttempt.js';
 import { generateExamCode } from '../utils/generateExamCode.js';
 
-// Get all exams (for teacher)
+// Get all exams
 export const getExams = async (req: AuthRequest, res: Response) => {
   try {
-    const teacherId = req.user?.id;
-    if (!teacherId) {
-      return res.status(401).json({
-        success: false,
-        message: 'Unauthorized',
-      });
+    const { role, id, class_id } = req.user!;
+
+    let exams;
+
+    if (role === 'teacher') {
+      // Teacher: get exams they created
+      exams = await ExamDB.findByTeacherId(id);
+    } else {
+      // Student: get exams from their class
+      if (!class_id) {
+        return res.json({
+          success: true,
+          data: [],
+        });
+      }
+      exams = await ExamDB.findByClassId(class_id);
     }
 
-    const exams = await ExamDB.findByTeacherId(teacherId);
     res.json({
       success: true,
       data: exams,
