@@ -4,6 +4,9 @@ import { ExamDB, Exam, ExamStatus } from '../database/Exam.js';
 import { ExamAttemptDB } from '../database/ExamAttempt.js';
 import { generateExamCode } from '../utils/generateExamCode.js';
 import { generateAccessKey } from '../utils/generateAccessKey.js';
+import crypto from 'crypto';
+
+const BEK_SECRET = process.env.EXAM_SECRET_KEY || 'exam-lockdown-secret-key';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -62,20 +65,22 @@ async function generateUniqueAccessKey(): Promise<string> {
 
 // ─── Teacher Routes ───────────────────────────────────────────────────────────
 
-// GET /api/exams — Get all exams (teacher sees all they created, student sees their class exams)
+// GET /api/exams — Get all exams (teacher sees all they created, student sees exams from ALL their enrolled classes)
 export const getExams = async (req: AuthRequest, res: Response) => {
   try {
-    const { role, id, class_id } = req.user!;
+    const { role, id } = req.user!;
 
     let exams;
 
     if (role === 'teacher') {
       exams = await ExamDB.findByTeacherId(id);
     } else {
-      if (!class_id) {
+      // Student: get ALL enrolled class IDs from class_students junction table
+      const enrolledClasses = await ExamDB.getStudentEnrolledClassIds(id);
+      if (enrolledClasses.length === 0) {
         return res.json({ success: true, data: [] });
       }
-      exams = await ExamDB.findByClassId(class_id);
+      exams = await ExamDB.findByClassIds(enrolledClasses);
     }
 
     const sanitized = exams.map((e: any) => ({
@@ -336,7 +341,7 @@ export const verifyAccess = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// POST /api/exams/start — Start an exam (student only, requires BEK)
+// POST /api/exams/start — Start an exam (student only, requires BEK for lockdown exams)
 export const startExam = async (req: AuthRequest, res: Response) => {
   try {
     const studentId = req.user?.id;
@@ -356,6 +361,28 @@ export const startExam = async (req: AuthRequest, res: Response) => {
 
     if (exam.status !== 'active') {
       return res.status(400).json({ success: false, message: 'Exam is not active' });
+    }
+
+    // Lockdown exam: require BEK hash from Desktop App
+    if (exam.is_lockdown_required) {
+      const clientHash = req.headers['x-lockdown-hash'] as string;
+      if (!clientHash) {
+        return res.status(403).json({
+          success: false,
+          message: 'This exam requires the Desktop Lockdown App. Please use the official exam application.',
+          code: 'BEK_REQUIRED',
+        });
+      }
+      const url = req.originalUrl || req.url || `/api/exams/start`;
+      const hashInput = `${url}${BEK_SECRET}${examId}`;
+      const expectedHash = crypto.createHash('sha256').update(hashInput).digest('hex');
+      if (clientHash !== expectedHash) {
+        return res.status(403).json({
+          success: false,
+          message: 'Invalid exam key. Please use the official exam application.',
+          code: 'BEK_INVALID',
+        });
+      }
     }
 
     // Verify student is enrolled in allowed class
@@ -477,7 +504,7 @@ export const submitAnswer = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// POST /api/exams/submit — Submit exam (student, BEK required)
+// POST /api/exams/submit — Submit exam (student, requires BEK for lockdown exams)
 export const submitExam = async (req: AuthRequest, res: Response) => {
   try {
     const studentId = req.user?.id;
@@ -485,9 +512,42 @@ export const submitExam = async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ success: false, message: 'Unauthorized.' });
     }
 
-    const { attemptId } = req.body;
+    // Accept both examId (student-web) and attemptId (desktop app)
+    const { examId, attemptId: bodyAttemptId } = req.body;
 
-    const attempt = await ExamAttemptDB.findById(attemptId);
+    // Lockdown exam: require BEK hash from Desktop App
+    if (examId) {
+      const exam = await ExamDB.findById(examId);
+      if (exam?.is_lockdown_required) {
+        const clientHash = req.headers['x-lockdown-hash'] as string;
+        if (!clientHash) {
+          return res.status(403).json({
+            success: false,
+            message: 'This exam requires the Desktop Lockdown App.',
+            code: 'BEK_REQUIRED',
+          });
+        }
+        const url = req.originalUrl || req.url || `/api/exams/submit`;
+        const hashInput = `${url}${BEK_SECRET}${examId}`;
+        const expectedHash = crypto.createHash('sha256').update(hashInput).digest('hex');
+        if (clientHash !== expectedHash) {
+          return res.status(403).json({
+            success: false,
+            message: 'Invalid exam key.',
+            code: 'BEK_INVALID',
+          });
+        }
+      }
+    }
+
+    let attempt;
+    if (bodyAttemptId) {
+      attempt = await ExamAttemptDB.findById(bodyAttemptId);
+    } else if (examId) {
+      attempt = await ExamAttemptDB.findByExamAndStudent(examId, studentId);
+    } else {
+      return res.status(400).json({ success: false, message: 'examId or attemptId required.' });
+    }
     if (!attempt) {
       return res.status(404).json({ success: false, message: 'Attempt not found' });
     }
@@ -541,7 +601,7 @@ export const submitExam = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    await ExamAttemptDB.submit(attemptId, new Date().toISOString(), score);
+    await ExamAttemptDB.submit(attempt.id, new Date().toISOString(), score);
 
     res.json({
       success: true,

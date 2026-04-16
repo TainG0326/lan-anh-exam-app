@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 
-const EXAM_SECRET_KEY = process.env.EXAM_SECRET_KEY || 'your-secret-key-change-in-production';
+const EXAM_SECRET_KEY = process.env.EXAM_SECRET_KEY || 'exam-lockdown-secret-key';
 
 // Extended Request interface with exam auth
 export interface BekRequest extends Request {
@@ -13,19 +13,23 @@ export interface BekRequest extends Request {
  * Browser Exam Key (BEK) Middleware
  * Validates that requests come from Electron Lockdown Browser
  * Hash = SHA256(URL + SECRET_KEY + Exam_ID)
+ *
+ * BEK is REQUIRED for lockdown exams, OPTIONAL for regular exams.
+ * The actual lockdown check happens inside the controller based on exam.is_lockdown_required.
  */
 export const bekAuth = (req: BekRequest, res: Response, next: NextFunction) => {
-  // Skip BEK validation for non-exam routes
-  const examRoutes = ['/api/exams/start', '/api/exams/submit-answer', '/api/exams/submit', '/api/exams/violation'];
-  const isExamRoute = examRoutes.some(route => (req as any).path.startsWith(route));
-  
-  if (!isExamRoute) {
+  // Only check BEK for specific endpoints
+  const bekRequiredRoutes = ['/api/exams/submit-answer', '/api/exams/violation'];
+  const isBekRoute = bekRequiredRoutes.some(route => req.originalUrl?.startsWith(route));
+
+  // For start and submit, BEK is optional (handled inside controller)
+  if (!isBekRoute) {
     return next();
   }
 
-  // Get exam ID from request body or params
-  const examId = (req as any).body?.examId || (req as any).params?.examId || (req as any).query?.examId;
-  
+  // Get exam ID
+  const examId = req.body?.examId || req.params?.examId || req.query?.examId;
+
   if (!examId) {
     return res.status(400).json({
       success: false,
@@ -35,9 +39,8 @@ export const bekAuth = (req: BekRequest, res: Response, next: NextFunction) => {
 
   // Get BEK hash from header
   const clientHash = req.headers['x-lockdown-hash'] as string;
-  const clientType = req.headers['x-lockdown-client'] as string;
 
-  // If no hash provided, check if it's a regular browser
+  // If no hash, treat as regular browser (not lockdown)
   if (!clientHash) {
     return res.status(403).json({
       success: false,
@@ -46,19 +49,17 @@ export const bekAuth = (req: BekRequest, res: Response, next: NextFunction) => {
     });
   }
 
-  // Generate expected hash
+  // Validate hash
   const url = req.originalUrl || (req as any).url;
   const hashInput = `${url}${EXAM_SECRET_KEY}${examId}`;
   const expectedHash = crypto.createHash('sha256').update(hashInput).digest('hex');
 
-  // Compare hashes
   if (clientHash !== expectedHash) {
     console.warn('BEK validation failed:', {
       url,
       examId,
       clientHash: clientHash.substring(0, 10) + '...',
       expectedHash: expectedHash.substring(0, 10) + '...',
-      clientType,
     });
 
     return res.status(403).json({
@@ -68,7 +69,6 @@ export const bekAuth = (req: BekRequest, res: Response, next: NextFunction) => {
     });
   }
 
-  // Store exam ID and hash in request for later use
   (req as any).examId = examId;
   (req as any).bekHash = clientHash;
 

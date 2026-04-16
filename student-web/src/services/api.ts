@@ -28,17 +28,28 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Chỉ redirect khi không phải đang init auth và thực sự là lỗi 401
-    if (error.response?.status === 401 && !isAuthInitializing) {
-      // Kiểm tra xem có token không - nếu có thì có thể là API lỗi tạm thời
-      const token = localStorage.getItem('token');
-      if (!token) {
-        // Không có token thật - redirect về login
+    // Handle 403 - do NOT hard-redirect to login.
+    // Student web may get 403 if user doesn't have class_id set yet.
+    // We only clear the specific failing token and let the page handle the error gracefully.
+    if (error.response?.status === 403) {
+      console.warn('[API] 403 Forbidden - not redirecting to login automatically');
+      // Only clear token if it's a specific auth endpoint failure, not for data endpoints
+      const isAuthEndpoint = error.config?.url?.includes('/auth/');
+      if (isAuthEndpoint && !isAuthInitializing) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         window.location.href = '/login';
       }
-      // Nếu có token, có thể là API lỗi tạm thời - không redirect
+      return Promise.reject(error);
+    }
+    // Chỉ redirect khi không phải đang init auth và thực sự là lỗi 401
+    if (error.response?.status === 401 && !isAuthInitializing) {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

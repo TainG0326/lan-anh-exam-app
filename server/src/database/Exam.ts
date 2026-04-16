@@ -173,6 +173,34 @@ export const ExamDB = {
     return (data || []) as Exam[];
   },
 
+  async findByClassIds(classIds: string[]): Promise<Exam[]> {
+    if (classIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('exams')
+      .select(`
+        *,
+        classes:allowed_class_id (
+          id,
+          name
+        )
+      `)
+      .in('allowed_class_id', classIds)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return (data || []) as Exam[];
+  },
+
+  async getStudentEnrolledClassIds(studentId: string): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('class_students')
+      .select('class_id')
+      .eq('student_id', studentId);
+
+    if (error || !data) return [];
+    return data.map((row: any) => row.class_id);
+  },
+
   async findByAllowedClassId(classId: string): Promise<Exam[]> {
     return this.findByClassId(classId);
   },

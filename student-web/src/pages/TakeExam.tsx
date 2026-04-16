@@ -57,13 +57,13 @@ export default function TakeExam() {
     }
   };
 
-  const handleAnswerChange = async (questionId: string, answer: any) => {
-    const newAnswers = { ...answers, [questionId]: answer };
+  const handleAnswerChange = async (questionIndex: number, answer: any) => {
+    const newAnswers = { ...answers, [questionIndex]: answer };
     setAnswers(newAnswers);
 
     // Auto-save answer
     try {
-      await submitAnswer(exam.id || exam._id, questionId, answer);
+      await submitAnswer(exam.id || exam._id, questionIndex, answer);
     } catch {
       // Silent fail - auto-save failure shouldn't interrupt user
     }
@@ -129,8 +129,7 @@ export default function TakeExam() {
 
       <div className="bg-white shadow rounded-lg p-6 space-y-6">
         {(exam.questions || []).map((question: any, index: number) => {
-          const questionId = question.id || `question_${index}`;
-          const currentAnswer = answers[questionId];
+          const currentAnswer = answers[index];
 
           return (
             <div key={index} className="border-b pb-6 last:border-b-0">
@@ -152,10 +151,10 @@ export default function TakeExam() {
                     >
                       <input
                         type="radio"
-                        name={questionId}
-                        value={option}
-                        checked={currentAnswer === option}
-                        onChange={() => handleAnswerChange(questionId, option)}
+                        name={`question_${index}`}
+                        value={optIndex.toString()}
+                        checked={currentAnswer === optIndex.toString()}
+                        onChange={() => handleAnswerChange(index, optIndex.toString())}
                         className="mr-3"
                       />
                       <span className="text-gray-700">{option}</span>
@@ -168,7 +167,7 @@ export default function TakeExam() {
                 <input
                   type="text"
                   value={currentAnswer || ''}
-                  onChange={(e) => handleAnswerChange(questionId, e.target.value)}
+                  onChange={(e) => handleAnswerChange(index, e.target.value)}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Enter your answer..."
                 />

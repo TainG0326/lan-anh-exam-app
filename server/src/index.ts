@@ -66,6 +66,8 @@ const corsOptions: cors.CorsOptions = {
     'X-Access-Token',
     'X-Device-Token',
     'X-Admin-Api-Key',
+    'X-Lockdown-Hash',
+    'X-Lockdown-Client',
     'Cookie',
     'Origin',
     'Accept',
@@ -120,6 +122,7 @@ async function mountApiRoutes(): Promise<void> {
     { default: assignmentRoutes },
     { default: questionParserRoutes },
     { default: examRoutes },
+    { default: examPublicRoutes },
     { default: aiImportRoutes },
     { default: notificationRoutes },
     { default: gradeRoutes },
@@ -130,6 +133,7 @@ async function mountApiRoutes(): Promise<void> {
     import('./routes/assignmentRoutes.js'),
     import('./routes/questionParserRoutes.js'),
     import('./routes/examRoutes.js'),
+    import('./routes/examPublicRoutes.js'),
     import('./routes/aiImportRoutes.js'),
     import('./routes/notificationRoutes.js'),
     import('./routes/gradeRoutes.js'),
@@ -141,6 +145,7 @@ async function mountApiRoutes(): Promise<void> {
   app.use('/api/assignments', assignmentRoutes);
   app.use('/api/question-parser', questionParserRoutes);
   app.use('/api/exams', examRoutes);
+  app.use('/api/exams/public', examPublicRoutes);
   app.use('/api/ai', aiImportRoutes);
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/grades', gradeRoutes);

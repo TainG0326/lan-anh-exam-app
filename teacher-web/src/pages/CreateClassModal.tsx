@@ -58,14 +58,14 @@ export default function CreateClassModal({ isOpen, onClose, onSuccess }: CreateC
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Class Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-slate-800 mb-1">
               Tên lớp học <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               required
               placeholder="VD: Tiếng Anh 10A, Luyện ngữ pháp nâng cao..."
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-slate-800"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             />
@@ -74,12 +74,12 @@ export default function CreateClassModal({ isOpen, onClose, onSuccess }: CreateC
           {/* Grade & Level */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-slate-800 mb-1">
                 Bậc học <span className="text-red-500">*</span>
               </label>
               <select
                 required
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-slate-800 bg-white"
                 value={formData.grade}
                 onChange={(e) => {
                   setFormData({ ...formData, grade: e.target.value as 'THCS' | 'THPT', level: '' });
@@ -90,12 +90,12 @@ export default function CreateClassModal({ isOpen, onClose, onSuccess }: CreateC
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-slate-800 mb-1">
                 Khối lớp <span className="text-red-500">*</span>
               </label>
               <select
                 required
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-slate-800 bg-white"
                 value={formData.level}
                 onChange={(e) => setFormData({ ...formData, level: e.target.value })}
               >
@@ -122,7 +122,7 @@ export default function CreateClassModal({ isOpen, onClose, onSuccess }: CreateC
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-slate-800 hover:bg-gray-50"
             >
               Hủy
             </button>

@@ -60,10 +60,10 @@ export const startExam = async (examId: string) => {
   return response.data;
 };
 
-export const submitAnswer = async (examId: string, questionId: string, answer: any) => {
+export const submitAnswer = async (examId: string, questionIndex: number, answer: any) => {
   const response = await api.post<{ success: boolean; message: string }>('/exams/submit-answer', {
     examId,
-    questionId,
+    questionIndex,
     answer,
   });
   return response.data;

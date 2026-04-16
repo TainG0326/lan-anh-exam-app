@@ -60,7 +60,7 @@ export default function Layout() {
 
   return (
     <div className="student-app-bg h-screen">
-      <div className="student-app-bg-overlay flex h-screen text-text-primary font-sans dark:text-white">
+      <div className="student-content-overlay flex h-screen text-text-primary font-sans dark:text-white">
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div
@@ -69,11 +69,11 @@ export default function Layout() {
         />
       )}
 
-      {/* Sidebar - 280px, white background */}
+      {/* Sidebar - 280px, white background with glassmorphism */}
       <aside
         className={`
           fixed inset-y-0 left-0 z-40 w-[280px]
-          bg-background-light border-r border-border
+          student-sidebar-overlay border-r border-border
           flex flex-col transform transition-transform duration-300 ease-in-out
           lg:translate-x-0 lg:static
           ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -153,16 +153,19 @@ export default function Layout() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 min-w-0 h-screen overflow-y-auto">
-        {/* Minimalist Header */}
-        <header className="sticky top-0 z-20 bg-background-light border-b border-border px-6 py-4">
+      <main className="flex-1 min-w-0 h-screen overflow-y-auto relative">
+        {/* Subtle gradient overlay for header area */}
+        <div className="absolute inset-x-0 top-0 h-20 student-top-gradient z-10" />
+        
+        {/* Minimalist Header - solid with subtle tint */}
+        <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-sm border-b border-border/50 px-6 py-4">
           <div className="flex items-center justify-between max-w-7xl mx-auto w-full gap-3">
             {/* Mobile Menu */}
             <div className="flex items-center gap-3 lg:hidden">
               <button
                 type="button"
                 onClick={() => setIsSidebarOpen(true)}
-                className="p-2 rounded-lg hover:bg-background"
+                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <Menu className="w-5 h-5 text-text-primary" />
               </button>
@@ -208,7 +211,7 @@ export default function Layout() {
                 </button>
 
                 {showProfileMenu && (
-                  <div className="animate-fade-in-down absolute right-0 top-12 z-[60] w-56 rounded-2xl border border-border bg-background-light shadow-soft">
+                  <div className="animate-fade-in-down absolute right-0 top-12 z-[60] w-56 rounded-2xl border border-border bg-white/90 backdrop-blur-md shadow-soft-lg">
                     <div className="p-2">
                       <div className="mb-2 border-b border-border px-4 py-3">
                         <p className="text-sm font-semibold text-text-primary">{user?.name || 'Student'}</p>

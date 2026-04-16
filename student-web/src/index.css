@@ -20,18 +20,40 @@ code {
 
 /* === App background (Student UIUX — desktop / mobile) === */
 .student-app-bg {
-  background-image: url("/image background for desktop.png");
+  background-image: url("/backround-main.png");
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
   background-attachment: fixed;
+  /* Dim and desaturate background for better readability */
+  filter: brightness(0.92) saturate(0.85);
 }
 
 @media (max-width: 768px) {
   .student-app-bg {
-    background-image: url("/backround image for mobile.png");
+    background-image: url("/backround-main.png");
     background-attachment: scroll;
   }
+}
+
+/* Glassmorphism overlay for content area - lighter for better background visibility */
+.student-content-overlay {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+/* Lighter overlay for sidebar */
+.student-sidebar-overlay {
+  background: rgba(249, 250, 251, 0.85);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* Subtle top gradient for header readability */
+.student-top-gradient {
+  background: linear-gradient(to bottom, rgba(255,255,255,0.3) 0%, transparent 100%);
+  pointer-events: none;
 }
 
 /* Nền rõ nét: overlay rất nhẹ, không blur toàn trang */
@@ -153,12 +175,12 @@ code {
 
 /* === Design System CSS Classes === */
 
-/* Card */
+/* Card - solid white with strong shadow for floating effect */
 .card {
   background: #FFFFFF;
   border-radius: 16px;
-  box-shadow: 0 4px 16px -6px rgba(0,0,0,0.08);
-  border: 1px solid #E5E7EB;
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(229, 231, 235, 0.8);
 }
 
 /* Buttons */

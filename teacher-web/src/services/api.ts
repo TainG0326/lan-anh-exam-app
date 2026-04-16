@@ -7,7 +7,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true, // Quan trọng: gửi cookies kèm request (cho trusted device)
+  withCredentials: true,
 });
 
 // Flag để tránh redirect khi đang init auth
