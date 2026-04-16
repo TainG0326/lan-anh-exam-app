@@ -4,69 +4,86 @@ import { supabase } from '../config/supabase.js';
 const router = express.Router();
 
 // ============================================================
+// TYPES
+// ============================================================
+interface AppVersionRow {
+  version: string;
+  release_date: string;
+  release_notes: string | null;
+  is_mandatory: boolean;
+  download_url: string | null;
+}
+
+interface AppVersionRaw {
+  version: string;
+  release_date: string;
+  release_notes: string | null;
+  is_mandatory: boolean;
+  download_url_windows: string | null;
+  download_url_mac: string | null;
+  download_url_linux: string | null;
+}
+
+interface VersionInfo {
+  latest_version: string | null;
+  release_date?: string;
+  release_notes?: string | null;
+  is_mandatory?: boolean;
+  download_url: string | null;
+}
+
+// ============================================================
 // GET /api/version - Check latest app version
 // ============================================================
-// Query params: ?platform=win32|darwin|linux
-// Returns: { latest_version, download_url, release_notes, is_mandatory }
 router.get('/', async (req, res) => {
   try {
-    const platform = req.query.platform || process.platform || 'win32';
+    const platform = req.query.platform as string || 'win32';
 
-    // Get latest active version from Supabase
-    const { data: versionData, error } = await supabase
+    // Try RPC first
+    const { data: versionData, error: rpcError } = await supabase
       .rpc('get_latest_app_version', { target_platform: platform })
-      .maybeSingle();
+      .maybeSingle<AppVersionRow>();
 
-    if (error) {
-      console.error('[Version API] Supabase RPC error:', error);
-
-      // Fallback: direct query if RPC not available
-      const { data: fallback, error: fallbackError } = await supabase
-        .from('app_versions')
-        .select('version, release_date, release_notes, is_mandatory, download_url_windows, download_url_mac, download_url_linux')
-        .eq('is_active', true)
-        .order('release_date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (fallbackError || !fallback) {
-        return res.status(200).json({
-          latest_version: null,
-          message: 'No version info available',
-          download_url: null,
-        });
-      }
-
-      const downloadUrl =
-        platform === 'darwin'
-          ? fallback.download_url_mac
-          : platform === 'linux'
-          ? fallback.download_url_linux
-          : fallback.download_url_windows;
-
+    if (!rpcError && versionData) {
       return res.status(200).json({
-        latest_version: fallback.version,
-        release_date: fallback.release_date,
-        release_notes: fallback.release_notes,
-        is_mandatory: fallback.is_mandatory || false,
-        download_url: downloadUrl,
+        latest_version: versionData.version,
+        release_date: versionData.release_date,
+        release_notes: versionData.release_notes,
+        is_mandatory: versionData.is_mandatory || false,
+        download_url: versionData.download_url,
       });
     }
 
-    if (!versionData) {
+    // Fallback: direct query
+    const { data: fallback, error: fallbackError } = await supabase
+      .from('app_versions')
+      .select('version, release_date, release_notes, is_mandatory, download_url_windows, download_url_mac, download_url_linux')
+      .eq('is_active', true)
+      .order('release_date', { ascending: false })
+      .limit(1)
+      .maybeSingle<AppVersionRaw>();
+
+    if (fallbackError || !fallback) {
       return res.status(200).json({
         latest_version: null,
-        message: 'No active version found',
+        message: 'No version info available',
         download_url: null,
       });
     }
 
+    const downloadUrl =
+      platform === 'darwin'
+        ? fallback.download_url_mac
+        : platform === 'linux'
+        ? fallback.download_url_linux
+        : fallback.download_url_windows;
+
     return res.status(200).json({
-      latest_version: versionData.version,
-      release_date: versionData.release_date,
-      release_notes: versionData.release_notes,
-      is_mandatory: versionData.is_mandatory || false,
-      download_url: versionData.download_url,
+      latest_version: fallback.version,
+      release_date: fallback.release_date,
+      release_notes: fallback.release_notes,
+      is_mandatory: fallback.is_mandatory || false,
+      download_url: downloadUrl,
     });
   } catch (err) {
     console.error('[Version API] Unexpected error:', err);
@@ -77,7 +94,6 @@ router.get('/', async (req, res) => {
 // ============================================================
 // GET /api/version/check - Compare with current version
 // ============================================================
-// Query params: ?current=1.0.0&platform=win32
 router.get('/check', async (req, res) => {
   try {
     const { current, platform } = req.query;
@@ -86,7 +102,6 @@ router.get('/check', async (req, res) => {
       return res.status(400).json({ error: 'current version is required' });
     }
 
-    // Get latest version info
     const versionInfo = await fetchVersionInfo(platform as string || 'win32');
 
     if (!versionInfo.latest_version) {
@@ -104,8 +119,8 @@ router.get('/check', async (req, res) => {
       latestVersion: versionInfo.latest_version,
       currentVersion: current,
       downloadUrl: hasUpdate ? versionInfo.download_url : null,
-      releaseNotes: versionInfo.release_notes,
-      isMandatory: versionInfo.is_mandatory,
+      releaseNotes: versionInfo.release_notes || '',
+      isMandatory: versionInfo.is_mandatory || false,
     });
   } catch (err) {
     console.error('[Version Check API] Error:', err);
@@ -126,7 +141,6 @@ router.get('/download/:platform', async (req, res) => {
       return res.status(404).json({ error: 'No download URL for this platform' });
     }
 
-    // Redirect to download URL
     return res.redirect(302, versionInfo.download_url);
   } catch (err) {
     console.error('[Version Download API] Error:', err);
@@ -135,7 +149,7 @@ router.get('/download/:platform', async (req, res) => {
 });
 
 // ============================================================
-// POST /api/version - Create/update version (Admin only)
+// POST /api/version - Create/update version
 // ============================================================
 router.post('/', async (req, res) => {
   try {
@@ -145,7 +159,6 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'version is required' });
     }
 
-    // Upsert version
     const { data, error } = await supabase
       .from('app_versions')
       .upsert(
@@ -179,18 +192,24 @@ router.post('/', async (req, res) => {
 // ============================================================
 // Helper Functions
 // ============================================================
-async function fetchVersionInfo(platform: string) {
+async function fetchVersionInfo(platform: string): Promise<VersionInfo> {
   // Try RPC first
   try {
     const { data, error } = await supabase
       .rpc('get_latest_app_version', { target_platform: platform })
-      .maybeSingle();
+      .maybeSingle<AppVersionRow>();
 
     if (!error && data) {
-      return data;
+      return {
+        latest_version: data.version,
+        release_date: data.release_date,
+        release_notes: data.release_notes,
+        is_mandatory: data.is_mandatory,
+        download_url: data.download_url,
+      };
     }
   } catch {
-    // RPC not available, fall through to direct query
+    // Fall through to direct query
   }
 
   // Direct query fallback
@@ -200,7 +219,7 @@ async function fetchVersionInfo(platform: string) {
     .eq('is_active', true)
     .order('release_date', { ascending: false })
     .limit(1)
-    .maybeSingle();
+    .maybeSingle<AppVersionRaw>();
 
   if (error || !data) {
     return { latest_version: null, download_url: null };
