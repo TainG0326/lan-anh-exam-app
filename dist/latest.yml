@@ -1,7 +1,7 @@
-﻿version: 1.1.4
+﻿version: 1.1.5
 files:
-  - url: https://github.com/TainG0326/lan-anh-exam-app/releases/download/v1.1.4/LanAnhExamSystem-Setup-1.1.4.exe
-    sha512: 72c71918cee914eabc72c985f02baf93296dd54f208628eff2121c4efb7269275b2fd65af94faa77ef33152436f03111cd3a6762c8e5404f8d99386412520592
-path: LanAnhExamSystem-Setup-1.1.4.exe
-sha512: 72c71918cee914eabc72c985f02baf93296dd54f208628eff2121c4efb7269275b2fd65af94faa77ef33152436f03111cd3a6762c8e5404f8d99386412520592
-releaseDate: '2026-04-17T08:30:00.000Z'
+  - url: https://github.com/TainG0326/lan-anh-exam-app/releases/download/v1.1.5/LanAnhExamSystem-Setup-1.1.5.exe
+    sha512: f2d73f40b8381f1edfd06861b0c4825ceb6451a361d8125229129dc4db8507776958a3f5ecd42be98b82bac01e190abd79bdb208540a1d95c77c37d1a14a50cf
+path: LanAnhExamSystem-Setup-1.1.5.exe
+sha512: f2d73f40b8381f1edfd06861b0c4825ceb6451a361d8125229129dc4db8507776958a3f5ecd42be98b82bac01e190abd79bdb208540a1d95c77c37d1a14a50cf
+releaseDate: '2026-04-17T09:00:00.000Z'
