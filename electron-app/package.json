@@ -1,42 +1,130 @@
 {
-  "name": "exam-lockdown-app",
-  "version": "1.0.0",
-  "description": "Lockdown Exam Browser - Safe Exam Browser Alternative",
+  "name": "lan-anh-exam-system",
+  "version": "1.2.0",
+  "description": "Lan Anh English Exam System - Secure Desktop Lockdown Browser",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder",
-    "dev": "electron . --dev"
+    "dev": "electron .",
+    "build": "npm run build:win",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
   },
-  "keywords": ["exam", "lockdown", "electron"],
-  "author": "",
+  "keywords": [
+    "exam",
+    "lockdown",
+    "education",
+    "electron"
+  ],
+  "author": "Lan Anh English",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TainG0326/lan-anh-exam-app"
+  },
   "devDependencies": {
     "electron": "^28.0.0",
-    "electron-builder": "^24.9.1"
+    "electron-builder": "^24.9.1",
+    "electron-installer-dmg": "^3.0.0",
+    "icon-gen": "^5.0.0",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.5"
   },
   "dependencies": {
-    "@tensorflow/tfjs": "^4.15.0",
-    "@tensorflow-models/blazeface": "^2.0.6",
-    "crypto-js": "^4.2.0"
+    "dotenv": "^16.6.1",
+    "electron-updater": "^6.1.8"
   },
   "build": {
-    "appId": "com.exam.lockdown",
-    "productName": "Exam Lockdown Browser",
+    "appId": "com.lananh.examsystem",
+    "productName": "Lan Anh Exam System",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "pubilc"
+    ],
     "win": {
-      "target": "nsis",
-      "icon": "assets/icon.ico"
+      "icon": "pubilc/Học viện Anh ngữ Lan Anh.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "appx": {
+      "applicationId": "LanAnhExamSystem",
+      "identityName": "LanAnhEnglish.ExamSystem",
+      "publisher": "CN=LanAnhEnglish",
+      "publisherDisplayName": "Lan Anh English",
+      "languages": ["vi-VN", "en-US"]
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false,
+      "uninstallDisplayName": "Lan Anh Exam System",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Lan Anh Exam System",
+      "installerHeaderIcon": "pubilc/Học viện Anh ngữ Lan Anh.ico",
+      "include": "installer.nsh",
+      "perMachine": false,
+      "runAfterFinish": true,
+      "installerIcon": "pubilc/Học viện Anh ngữ Lan Anh.ico",
+      "uninstallerIcon": "pubilc/Học viện Anh ngữ Lan Anh.ico",
+      "artifactName": "${productName} Setup ${version}.${ext}",
+      "differentialPackage": false,
+      "guid": "lan-anh-exam-unique-id"
     },
     "mac": {
-      "target": "dmg",
-      "icon": "assets/icon.icns"
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "pubilc/icon.icns",
+      "category": "public.app-category.education",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "pubilc/entitlements.mac.plist",
+      "entitlementsInherit": "pubilc/entitlements.mac.plist"
+    },
+    "dmg": {
+      "title": "Lan Anh Exam System",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220,
+          "type": "file",
+          "path": "/Applications"
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "format": "ULFO"
     },
     "linux": {
-      "target": "AppImage",
-      "icon": "assets/icon.png"
+      "target": [
+        "AppImage"
+      ]
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://raw.githubusercontent.com/TainG0326/lan-anh-exam-app/main/dist/"
     }
   }
 }
-
-
-
