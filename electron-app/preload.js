@@ -1,11 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Login verification
-  verifyCredentials: (email, password) => ipcRenderer.invoke('verify-credentials', email, password),
-
   // Exit & Password
-  requestMasterPassword: () => ipcRenderer.invoke('exit:request-master-password'),
   verifyPassword: (password) => ipcRenderer.invoke('exit:verify-password', password),
 
   // Focus Violation

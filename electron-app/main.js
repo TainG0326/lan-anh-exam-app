@@ -1,36 +1,17 @@
 require('dotenv').config();
 const { app, BrowserWindow, globalShortcut, screen, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
-const crypto = require('crypto');
 const { autoUpdater } = require('electron-updater');
 
 // ============================================================
 // APP STATE
 // ============================================================
 let isQuitting = false;
-let loginWindow = null;
 let mainWindow = null;
 let updateWindow = null;
 let isLockdownActive = false;
 let focusViolationCount = 0;
 let focusIntervalId = null;
-let updateCheckDone = false;
-
-// ============================================================
-// ALLOWED ACCOUNT (SHA-256 hashed password)
-// Password: Thaitai01020304
-// SHA-256: 8f0e2f76e22b43a2854b1d25a2f0f5b3e40c2e8d9b1a3f5c7e9d2b4a6c8e0f1
-// ============================================================
-const ALLOWED_ACCOUNTS = [
-  {
-    email: 'thaitai824@gmail.com',
-    passwordHash: '8f0e2f76e22b43a2854b1d25a2f0f5b3e40c2e8d9b1a3f5c7e9d2b4a6c8e0f1',
-  },
-];
-
-function hashPassword(password) {
-  return crypto.createHash('sha256').update(password).digest('hex');
-}
 
 // ============================================================
 // CONFIGURATION
@@ -63,7 +44,7 @@ function isMultiMonitor() {
 // ============================================================
 // AUTO-UPDATER (with in-app UI)
 // ============================================================
-autoUpdater.autoDownload = false; // Manual trigger
+autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = false;
 autoUpdater.logger = {
   info: (msg) => log(`[AutoUpdater] ${msg}`),
@@ -72,258 +53,9 @@ autoUpdater.logger = {
 };
 
 // ============================================================
-// LOGIN WINDOW
-// ============================================================
-function createLoginWindow() {
-  if (loginWindow && !loginWindow.isDestroyed()) {
-    loginWindow.focus();
-    return;
-  }
-
-  log('[Login] Creating login window');
-
-  loginWindow = new BrowserWindow({
-    width: 480,
-    height: 580,
-    resizable: false,
-    frame: false,
-    center: true,
-    backgroundColor: '#0f172a',
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  });
-
-  loginWindow.setMenu(null);
-  loginWindow.setMenuBarVisibility(false);
-
-  const loginHTML = `<!DOCTYPE html>
-<html lang="vi">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lan Anh Exam System</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-  font-family: 'Segoe UI', Arial, sans-serif;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-.container {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 24px;
-  padding: 40px;
-  width: 100%;
-  max-width: 400px;
-}
-.header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-.logo {
-  width: 72px;
-  height: 72px;
-  background: linear-gradient(135deg, #5F8D78, #4a6e5c);
-  border-radius: 20px;
-  margin: 0 auto 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 32px;
-}
-h1 {
-  color: #f8fafc;
-  font-size: 22px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-.subtitle {
-  color: #64748b;
-  font-size: 13px;
-}
-.form-group {
-  margin-bottom: 18px;
-}
-label {
-  display: block;
-  color: #94a3b8;
-  font-size: 12px;
-  font-weight: 600;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-input {
-  width: 100%;
-  padding: 13px 16px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 12px;
-  color: #f8fafc;
-  font-size: 14px;
-  outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-input:focus {
-  border-color: #5F8D78;
-  box-shadow: 0 0 0 3px rgba(95,141,120,0.15);
-}
-input::placeholder {
-  color: #475569;
-}
-.btn {
-  width: 100%;
-  padding: 14px;
-  background: linear-gradient(135deg, #5F8D78, #4a6e5c);
-  color: #fff;
-  border: none;
-  border-radius: 12px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 8px;
-  transition: opacity 0.2s, transform 0.1s;
-}
-.btn:hover { opacity: 0.9; }
-.btn:active { transform: scale(0.98); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.error {
-  background: rgba(220,38,38,0.1);
-  border: 1px solid rgba(220,38,38,0.2);
-  border-radius: 10px;
-  padding: 12px 14px;
-  color: #fca5a5;
-  font-size: 13px;
-  margin-bottom: 18px;
-  display: none;
-  text-align: center;
-}
-.version {
-  text-align: center;
-  color: #475569;
-  font-size: 11px;
-  margin-top: 24px;
-}
-</style>
-</head>
-<body>
-<div class="container">
-  <div class="header">
-    <div class="logo">&#128218;</div>
-    <h1>Lan Anh Exam System</h1>
-    <p class="subtitle">He thong thi truc tuyen</p>
-  </div>
-
-  <div id="error" class="error"></div>
-
-  <div class="form-group">
-    <label>Email</label>
-    <input type="email" id="email" placeholder="Nhap email..." autocomplete="off" />
-  </div>
-
-  <div class="form-group">
-    <label>Mat khau</label>
-    <input type="password" id="password" placeholder="Nhap mat khau..." />
-  </div>
-
-  <button class="btn" id="loginBtn" onclick="handleLogin()">Dang nhap</button>
-
-  <p class="version" id="version">v1.2.0</p>
-</div>
-
-<script>
-async function handleLogin() {
-  var email = document.getElementById('email').value.trim();
-  var password = document.getElementById('password').value;
-  var errorEl = document.getElementById('error');
-  var btn = document.getElementById('loginBtn');
-
-  errorEl.style.display = 'none';
-  errorEl.textContent = '';
-
-  if (!email || !password) {
-    errorEl.textContent = 'Vui long nhap email va mat khau';
-    errorEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'Dang nhap';
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = 'Dang kiem tra...';
-
-  try {
-    if (window.electronAPI) {
-      var result = await window.electronAPI.verifyCredentials(email, password);
-      if (result.success) {
-        btn.textContent = 'Dang vao...';
-        window.location.href = 'app://loggedin';
-      } else {
-        errorEl.textContent = result.message || 'Email hoac mat khau khong dung';
-        errorEl.style.display = 'block';
-        btn.disabled = false;
-        btn.textContent = 'Dang nhap';
-      }
-    } else {
-      errorEl.textContent = 'Loi: Khong the ket noi toi he thong';
-      errorEl.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'Dang nhap';
-    }
-  } catch (err) {
-    errorEl.textContent = 'Loi: ' + err.message;
-    errorEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'Dang nhap';
-  }
-}
-
-document.getElementById('password').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') handleLogin();
-});
-</script>
-</body>
-</html>`;
-
-  loginWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(loginHTML)}`);
-
-  loginWindow.webContents.on('will-navigate', (event, url) => {
-    if (url.startsWith('app://loggedin')) {
-      event.preventDefault();
-      log('[App] Login successful - proceeding to update check');
-      if (loginWindow && !loginWindow.isDestroyed()) {
-        loginWindow.close();
-        loginWindow = null;
-      }
-      createUpdateWindow();
-      autoUpdater.checkForUpdates().catch((err) => {
-        log(`[AutoUpdater] Check failed: ${err.message}`, 'ERROR');
-        if (updateWindow && !updateWindow.isDestroyed()) {
-          updateWindow.webContents.executeJavaScript('updateUI("error", 0, "");');
-        }
-      });
-    } else if (!url.startsWith('data:') && !url.startsWith('app://')) {
-      event.preventDefault();
-    }
-  });
-
-  loginWindow.on('closed', () => {
-    loginWindow = null;
-  });
-}
-
-// ============================================================
 // UPDATE WINDOW (Full screen, blocks interaction)
 // ============================================================
-function createUpdateWindow(status, progress, version) {
+function createUpdateWindow() {
   if (updateWindow && !updateWindow.isDestroyed()) {
     updateWindow.focus();
     return;
@@ -353,8 +85,7 @@ function createUpdateWindow(status, progress, version) {
     updateWindow = null;
   });
 
-  function renderUpdateUI() {
-    const uiHTML = `<!DOCTYPE html>
+  const uiHTML = `<!DOCTYPE html>
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
@@ -458,7 +189,7 @@ h2 {
 </div>
 
 <script>
-let state = 'available'; // available, downloading, ready
+let state = 'available';
 
 function updateUI(status, progress, version) {
   const title = document.getElementById('title');
@@ -511,7 +242,7 @@ function updateUI(status, progress, version) {
     progressFill.style.width = '100%';
     progressText.textContent = 'OK';
     statusEl.textContent = 'Tu dong chuyen tiep...';
-    setTimeout(() => {
+    setTimeout(function() {
       if (window.electronAPI) window.electronAPI.updateComplete();
     }, 1500);
   } else if (status === 'error') {
@@ -542,10 +273,7 @@ updateUI('checking', 0, '');
 </body>
 </html>`;
 
-    updateWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(uiHTML)}`);
-  }
-
-  renderUpdateUI();
+  updateWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(uiHTML)}`);
 
   // Handle update events
   autoUpdater.on('checking-for-update', () => {
@@ -591,8 +319,6 @@ updateUI('checking', 0, '');
       updateWindow.webContents.executeJavaScript('updateUI("error", 0, "");');
     }
   });
-
-  return updateWindow;
 }
 
 // ============================================================
@@ -670,12 +396,23 @@ function createExamWindow() {
     }
   });
 
+  // Inject quit button and check for update on login page
   mainWindow.webContents.on('did-finish-load', () => {
     const url = mainWindow.webContents.getURL();
     log(`[ExamWindow] did-finish-load: ${url}`);
     injectQuitButton();
+
+    // On login page - check for updates first
+    if (url.includes('/login')) {
+      log('[App] On login page - checking for updates');
+      createUpdateWindow();
+      autoUpdater.checkForUpdates().catch((err) => {
+        log(`[AutoUpdater] Check failed: ${err.message}`, 'ERROR');
+      });
+    }
   });
 
+  // Activate lockdown when navigating to student/teacher pages
   mainWindow.webContents.on('did-navigate-in-page', (_event, url) => {
     log(`[ExamWindow] did-navigate-in-page: ${url}`);
     if (url.includes('/student/') || url.includes('/teacher/') || url.includes('/exam/')) {
@@ -948,20 +685,6 @@ function registerSecretExit() {
 // ============================================================
 // IPC HANDLERS
 // ============================================================
-ipcMain.handle('verify-credentials', (_event, email, password) => {
-  const inputHash = hashPassword(password);
-
-  for (const account of ALLOWED_ACCOUNTS) {
-    if (email === account.email && inputHash === account.passwordHash) {
-      log(`[Login] Success: ${email}`);
-      return { success: true };
-    }
-  }
-
-  log(`[Login] Failed: ${email}`, 'WARN');
-  return { success: false, message: 'Email hoac mat khau khong dung' };
-});
-
 ipcMain.handle('exit:verify-password', (_event, password) => {
   if (password === CONFIG.MASTER_PASSWORD) {
     deactivateLockdown();
@@ -997,12 +720,14 @@ ipcMain.handle('update:install-restart', () => {
 });
 
 ipcMain.handle('update:complete', () => {
-  log('[App] Update check complete, proceeding to app');
+  log('[App] Update check complete, proceeding to exam');
   if (updateWindow && !updateWindow.isDestroyed()) {
     updateWindow.close();
     updateWindow = null;
   }
-  createExamWindow();
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createExamWindow();
+  }
   return { success: true };
 });
 
@@ -1115,12 +840,12 @@ p{color:#5a7a6a;font-size:14px;line-height:1.7;}
     return;
   }
 
-  // Step 1: Show login window
-  createLoginWindow();
+  // Start exam window directly (goes to exam web login page)
+  createExamWindow();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createLoginWindow();
+      createExamWindow();
     }
   });
 });
