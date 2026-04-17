@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startUpdateDownload: () => ipcRenderer.invoke('update:start-download'),
   installAndRestart: () => ipcRenderer.invoke('update:install-restart'),
   updateComplete: () => ipcRenderer.invoke('update:complete'),
+  onUpdateUI: (callback) => {
+    ipcRenderer.on('update-ui', (_event, data) => callback(data));
+  },
 
   // Event listeners
   onLockdownActivated: (callback) => ipcRenderer.on('lockdown-activated', callback),
