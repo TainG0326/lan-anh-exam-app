@@ -241,10 +241,10 @@ input::placeholder {
 
 <script>
 async function handleLogin() {
-  const email = document.getElementById('email').value.trim();
-  const password = document.getElementById('password').value;
-  const errorEl = document.getElementById('error');
-  const btn = document.getElementById('loginBtn');
+  var email = document.getElementById('email').value.trim();
+  var password = document.getElementById('password').value;
+  var errorEl = document.getElementById('error');
+  var btn = document.getElementById('loginBtn');
 
   errorEl.style.display = 'none';
   errorEl.textContent = '';
@@ -252,28 +252,41 @@ async function handleLogin() {
   if (!email || !password) {
     errorEl.textContent = 'Vui long nhap email va mat khau';
     errorEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Dang nhap';
     return;
   }
 
   btn.disabled = true;
   btn.textContent = 'Dang kiem tra...';
 
-  // Send credentials to main process for verification
-  if (window.electronAPI) {
-    const result = await window.electronAPI.verifyCredentials(email, password);
-    if (result.success) {
-      btn.textContent = 'Dang vao...';
-      window.location.href = 'app://loggedin';
+  try {
+    if (window.electronAPI) {
+      var result = await window.electronAPI.verifyCredentials(email, password);
+      if (result.success) {
+        btn.textContent = 'Dang vao...';
+        window.location.href = 'app://loggedin';
+      } else {
+        errorEl.textContent = result.message || 'Email hoac mat khau khong dung';
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Dang nhap';
+      }
     } else {
-      errorEl.textContent = result.message || 'Email hoac mat khau khong dung';
+      errorEl.textContent = 'Loi: Khong the ket noi toi he thong';
       errorEl.style.display = 'block';
       btn.disabled = false;
       btn.textContent = 'Dang nhap';
     }
+  } catch (err) {
+    errorEl.textContent = 'Loi: ' + err.message;
+    errorEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Dang nhap';
   }
 }
 
-document.getElementById('password').addEventListener('keydown', (e) => {
+document.getElementById('password').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') handleLogin();
 });
 </script>
@@ -282,8 +295,24 @@ document.getElementById('password').addEventListener('keydown', (e) => {
 
   loginWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(loginHTML)}`);
 
-  loginWindow.webContents.on('will-navigate', (event) => {
-    event.preventDefault();
+  loginWindow.webContents.on('will-navigate', (event, url) => {
+    if (url.startsWith('app://loggedin')) {
+      event.preventDefault();
+      log('[App] Login successful - proceeding to update check');
+      if (loginWindow && !loginWindow.isDestroyed()) {
+        loginWindow.close();
+        loginWindow = null;
+      }
+      createUpdateWindow();
+      autoUpdater.checkForUpdates().catch((err) => {
+        log(`[AutoUpdater] Check failed: ${err.message}`, 'ERROR');
+        if (updateWindow && !updateWindow.isDestroyed()) {
+          updateWindow.webContents.executeJavaScript('updateUI("error", 0, "");');
+        }
+      });
+    } else if (!url.startsWith('data:') && !url.startsWith('app://')) {
+      event.preventDefault();
+    }
   });
 
   loginWindow.on('closed', () => {
@@ -1089,38 +1118,9 @@ p{color:#5a7a6a;font-size:14px;line-height:1.7;}
   // Step 1: Show login window
   createLoginWindow();
 
-  // Step 2: After login success, show update window and check for updates
-  // This is handled by the login window's navigation to 'app://loggedin'
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createLoginWindow();
-    }
-  });
-});
-
-// Handle login success navigation
-app.on('web-contents-created', (_event, contents) => {
-  contents.on('will-navigate', (event, url) => {
-    if (url.startsWith('app://loggedin')) {
-      event.preventDefault();
-      log('[App] Login successful - proceeding to update check');
-
-      if (loginWindow && !loginWindow.isDestroyed()) {
-        loginWindow.close();
-        loginWindow = null;
-      }
-
-      // Create update window and check for updates
-      createUpdateWindow();
-
-      // Check for updates
-      autoUpdater.checkForUpdates().catch((err) => {
-        log(`[AutoUpdater] Check failed: ${err.message}`, 'ERROR');
-        if (updateWindow && !updateWindow.isDestroyed()) {
-          updateWindow.webContents.executeJavaScript('updateUI("error", 0, "");');
-        }
-      });
     }
   });
 });
