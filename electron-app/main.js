@@ -53,7 +53,7 @@ autoUpdater.logger = {
 };
 
 // ============================================================
-// UPDATE WINDOW (Full screen, blocks interaction)
+// UPDATE WINDOW (Optional update - user can skip)
 // ============================================================
 function createUpdateWindow() {
   if (updateWindow && !updateWindow.isDestroyed()) {
@@ -65,7 +65,7 @@ function createUpdateWindow() {
 
   updateWindow = new BrowserWindow({
     width: 500,
-    height: 400,
+    height: 480,
     resizable: false,
     frame: false,
     center: true,
@@ -133,6 +133,16 @@ h2 {
   margin-bottom: 28px;
   line-height: 1.6;
 }
+.version-tag {
+  display: inline-block;
+  background: linear-gradient(135deg, #5F8D78, #4a6e5c);
+  color: #fff;
+  padding: 4px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
 .progress-bar {
   width: 100%;
   height: 8px;
@@ -153,9 +163,14 @@ h2 {
   font-size: 12px;
   margin-bottom: 20px;
 }
+.btn-group {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
 .btn {
-  padding: 12px 32px;
-  background: linear-gradient(135deg, #5F8D78, #4a6e5c);
+  padding: 12px 28px;
   color: #fff;
   border: none;
   border-radius: 12px;
@@ -163,9 +178,19 @@ h2 {
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.2s;
+  flex: 1;
+  min-width: 120px;
 }
 .btn:hover { opacity: 0.9; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary {
+  background: linear-gradient(135deg, #5F8D78, #4a6e5c);
+}
+.btn-secondary {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.btn-secondary:hover { background: rgba(255,255,255,0.15); }
 .status {
   color: #5F8D78;
   font-size: 13px;
@@ -176,93 +201,129 @@ h2 {
 <body>
 <div class="container">
   <div class="icon">&#11014;</div>
+  <div id="versionTag" class="version-tag">v1.0.0</div>
   <h2 id="title">Phien ban moi</h2>
-  <p class="desc" id="desc">Dang tai cap nhat...</p>
+  <p class="desc" id="desc">Co phien ban moi. Ban co the cap nhat hoac bo qua.</p>
 
-  <div class="progress-bar">
-    <div class="progress-fill" id="progressFill"></div>
+  <div id="progressSection" style="display:none;">
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <p class="progress-text" id="progressText">0%</p>
   </div>
-  <p class="progress-text" id="progressText">0%</p>
 
-  <button class="btn" id="actionBtn" onclick="handleAction()">Tai va cai dat</button>
+  <div class="btn-group" id="btnGroup">
+    <button class="btn btn-primary" id="updateBtn" onclick="handleUpdate()">Cap nhat</button>
+    <button class="btn btn-secondary" id="skipBtn" onclick="handleSkip()">Bo qua</button>
+  </div>
   <p class="status" id="status"></p>
 </div>
 
 <script>
 let state = 'available';
+let newVersion = '';
 
 function updateUI(status, progress, version) {
-  const title = document.getElementById('title');
-  const desc = document.getElementById('desc');
-  const progressFill = document.getElementById('progressFill');
-  const progressText = document.getElementById('progressText');
-  const actionBtn = document.getElementById('actionBtn');
-  const statusEl = document.getElementById('status');
+  var title = document.getElementById('title');
+  var desc = document.getElementById('desc');
+  var versionTag = document.getElementById('versionTag');
+  var progressSection = document.getElementById('progressSection');
+  var progressFill = document.getElementById('progressFill');
+  var progressText = document.getElementById('progressText');
+  var updateBtn = document.getElementById('updateBtn');
+  var skipBtn = document.getElementById('skipBtn');
+  var btnGroup = document.getElementById('btnGroup');
+  var statusEl = document.getElementById('status');
 
   if (status === 'checking') {
+    state = 'checking';
     title.textContent = 'Dang kiem tra...';
     desc.textContent = 'Vui long cho trong giay lat...';
-    actionBtn.style.display = 'none';
-    progressFill.style.width = '0%';
-    progressText.textContent = '';
+    versionTag.style.display = 'none';
+    progressSection.style.display = 'none';
+    updateBtn.style.display = 'none';
+    skipBtn.style.display = 'none';
+    statusEl.textContent = '';
   } else if (status === 'available') {
     state = 'available';
-    title.textContent = 'Phien ban moi: v' + version;
-    desc.textContent = 'Co phien ban moi. Tai cap nhat de tiep tuc.';
-    actionBtn.textContent = 'Tai va cai dat';
-    actionBtn.disabled = false;
-    actionBtn.style.display = 'inline-block';
-    progressFill.style.width = '0%';
-    progressText.textContent = '';
+    newVersion = version;
+    title.textContent = 'Phien ban moi san sang!';
+    desc.textContent = 'Co phien ban ' + version + ' moi. Ban co the cap nhat hoac su dung phien ban hien tai.';
+    versionTag.textContent = 'v' + version;
+    versionTag.style.display = 'inline-block';
+    progressSection.style.display = 'none';
+    updateBtn.style.display = 'inline-block';
+    updateBtn.textContent = 'Cap nhat ngay';
+    updateBtn.disabled = false;
+    skipBtn.style.display = 'inline-block';
+    skipBtn.textContent = 'Su dung phien ban cu';
+    btnGroup.style.display = 'flex';
     statusEl.textContent = '';
   } else if (status === 'downloading') {
     state = 'downloading';
     title.textContent = 'Dang tai cap nhat...';
     desc.textContent = 'Vui long cho, khong tat ung dung.';
-    actionBtn.disabled = true;
-    actionBtn.textContent = 'Dang tai...';
-    actionBtn.style.display = 'inline-block';
+    versionTag.textContent = 'v' + version;
+    versionTag.style.display = 'inline-block';
+    progressSection.style.display = 'block';
     progressFill.style.width = progress + '%';
-    progressText.textContent = Math.round(progress) + '%';
+    progressText.textContent = Math.round(progress) + '% da tai';
+    updateBtn.style.display = 'none';
+    skipBtn.style.display = 'none';
+    btnGroup.style.display = 'none';
     statusEl.textContent = '';
   } else if (status === 'ready') {
     state = 'ready';
-    title.textContent = 'San sang cai dat';
-    desc.textContent = 'Cap nhat da tai xong. Bam ben duoi de khoi dong lai.';
-    actionBtn.textContent = 'Khoi dong lai ngay';
-    actionBtn.disabled = false;
-    actionBtn.style.display = 'inline-block';
-    progressFill.style.width = '100%';
-    progressText.textContent = '100%';
+    title.textContent = 'San sang khoi dong lai';
+    desc.textContent = 'Cap nhat da tai xong. Khoi dong lai de su dung phien ban moi.';
+    versionTag.textContent = 'v' + version;
+    versionTag.style.display = 'inline-block';
+    progressSection.style.display = 'none';
+    updateBtn.style.display = 'inline-block';
+    updateBtn.textContent = 'Khoi dong lai ngay';
+    updateBtn.disabled = false;
+    skipBtn.style.display = 'inline-block';
+    skipBtn.textContent = 'Khoi dong sau';
+    btnGroup.style.display = 'flex';
     statusEl.textContent = '';
   } else if (status === 'no-update') {
+    state = 'no-update';
     title.textContent = 'Ban dang su dung phien ban moi nhat';
-    desc.textContent = 'Khong can cap nhat. Dang vao he thong...';
-    actionBtn.style.display = 'none';
-    progressFill.style.width = '100%';
-    progressText.textContent = 'OK';
+    desc.textContent = 'Khong co cap nhat moi. Dang vao he thong...';
+    versionTag.textContent = 'v' + version;
+    versionTag.style.display = 'inline-block';
+    progressSection.style.display = 'none';
+    updateBtn.style.display = 'none';
+    skipBtn.style.display = 'none';
+    btnGroup.style.display = 'none';
     statusEl.textContent = 'Tu dong chuyen tiep...';
     setTimeout(function() {
       if (window.electronAPI) window.electronAPI.updateComplete();
     }, 1500);
   } else if (status === 'error') {
-    title.textContent = 'Loi cap nhat';
-    desc.textContent = 'Khong the kiem tra cap nhat. Tiep tuc su dung phien ban hien tai.';
-    actionBtn.textContent = 'Bo qua va tiep tuc';
-    actionBtn.disabled = false;
-    actionBtn.style.display = 'inline-block';
-    progressFill.style.width = '0%';
-    progressText.textContent = '';
+    state = 'error';
+    title.textContent = 'Khong the kiem tra cap nhat';
+    desc.textContent = 'Da xay ra loi khi kiem tra cap nhat. Ban co the tiep tuc su dung phien ban hien tai.';
+    versionTag.style.display = 'none';
+    progressSection.style.display = 'none';
+    updateBtn.style.display = 'none';
+    skipBtn.style.display = 'inline-block';
+    skipBtn.textContent = 'Tiep tuc su dung';
+    btnGroup.style.display = 'flex';
     statusEl.textContent = '';
   }
 }
 
-function handleAction() {
+function handleUpdate() {
   if (state === 'available' && window.electronAPI) {
     window.electronAPI.startUpdateDownload();
   } else if (state === 'ready' && window.electronAPI) {
     window.electronAPI.installAndRestart();
-  } else if (state === 'error' && window.electronAPI) {
+  }
+}
+
+function handleSkip() {
+  if (window.electronAPI) {
     window.electronAPI.updateComplete();
   }
 }
