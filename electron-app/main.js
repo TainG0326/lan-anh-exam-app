@@ -59,283 +59,101 @@ autoUpdater.logger = {
 function injectUpdateUI(status, progress, version) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
 
-  const updateOverlayHTML = `
-    <style>
-      .lananh-update-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(15, 23, 42, 0.92);
-        backdrop-filter: blur(8px);
-        z-index: 2147483647;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-family: 'Segoe UI', Arial, sans-serif;
-      }
-      .lananh-update-container {
-        background: linear-gradient(145deg, #1a2744 0%, #0f172a 100%);
-        border: 1px solid rgba(95, 141, 120, 0.3);
-        border-radius: 24px;
-        padding: 40px;
-        width: 100%;
-        max-width: 420px;
-        text-align: center;
-        box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5);
-        animation: lananh-fade-in 0.3s ease;
-      }
-      @keyframes lananh-fade-in {
-        from { opacity: 0; transform: scale(0.95); }
-        to { opacity: 1; transform: scale(1); }
-      }
-      .lananh-update-icon {
-        width: 80px;
-        height: 80px;
-        background: linear-gradient(135deg, #5F8D78, #4a6e5c);
-        border-radius: 50%;
-        margin: 0 auto 24px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 36px;
-      }
-      .lananh-update-version {
-        display: inline-block;
-        background: linear-gradient(135deg, #5F8D78, #4a6e5c);
-        color: #fff;
-        padding: 4px 16px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-        margin-bottom: 16px;
-      }
-      .lananh-update-title {
-        color: #f8fafc;
-        font-size: 20px;
-        font-weight: 700;
-        margin-bottom: 8px;
-      }
-      .lananh-update-desc {
-        color: #94a3b8;
-        font-size: 13px;
-        margin-bottom: 28px;
-        line-height: 1.6;
-      }
-      .lananh-progress-bar {
-        width: 100%;
-        height: 8px;
-        background: rgba(255,255,255,0.08);
-        border-radius: 4px;
-        overflow: hidden;
-        margin-bottom: 10px;
-      }
-      .lananh-progress-fill {
-        height: 100%;
-        background: linear-gradient(90deg, #5F8D78, #4a6e5c);
-        border-radius: 4px;
-        transition: width 0.3s ease;
-        width: 0%;
-      }
-      .lananh-progress-text {
-        color: #94a3b8;
-        font-size: 12px;
-        margin-bottom: 20px;
-      }
-      .lananh-btn-group {
-        display: flex;
-        gap: 12px;
-        justify-content: center;
-        flex-wrap: wrap;
-      }
-      .lananh-btn {
-        padding: 12px 28px;
-        color: #fff;
-        border: none;
-        border-radius: 12px;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-        flex: 1;
-        min-width: 120px;
-      }
-      .lananh-btn:hover { opacity: 0.9; transform: translateY(-1px); }
-      .lananh-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-      .lananh-btn-primary {
-        background: linear-gradient(135deg, #5F8D78, #4a6e5c);
-      }
-      .lananh-btn-secondary {
-        background: rgba(255,255,255,0.1);
-        border: 1px solid rgba(255,255,255,0.15);
-      }
-      .lananh-btn-secondary:hover { background: rgba(255,255,255,0.15); }
-      .lananh-status {
-        color: #5F8D78;
-        font-size: 13px;
-        margin-top: 16px;
-      }
-      .lananh-close-btn {
-        position: absolute;
-        top: 16px;
-        right: 16px;
-        background: rgba(255,255,255,0.1);
-        border: none;
-        color: #64748b;
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        cursor: pointer;
-        font-size: 18px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.2s;
-      }
-      .lananh-close-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
-    </style>
-
-    <div class="lananh-update-overlay" id="lananhUpdateOverlay">
-      <div class="lananh-update-container" style="position: relative;">
-        <div class="lananh-update-icon">&#11014;</div>
-        <div class="lananh-update-version" id="lananhVersionTag">v1.0.0</div>
-        <h2 class="lananh-update-title" id="lananhTitle">Dang kiem tra...</h2>
-        <p class="lananh-update-desc" id="lananhDesc">Vui long cho trong giay lat...</p>
-
-        <div id="lananhProgressSection" style="display:none;">
-          <div class="lananh-progress-bar">
-            <div class="lananh-progress-fill" id="lananhProgressFill"></div>
-          </div>
-          <p class="lananh-progress-text" id="lananhProgressText">0%</p>
-        </div>
-
-        <div class="lananh-btn-group" id="lananhBtnGroup">
-          <button class="lananh-btn lananh-btn-primary" id="lananhUpdateBtn" onclick="lananhHandleUpdate()">Cap nhat</button>
-          <button class="lananh-btn lananh-btn-secondary" id="lananhSkipBtn" onclick="lananhHandleSkip()">Bo qua</button>
-        </div>
-        <p class="lananh-status" id="lananhStatus"></p>
-      </div>
-    </div>
-
-    <script>
-      var lananhState = 'checking';
-      var lananhVersion = '';
-
-      function lananhUpdateUI(status, progress, version) {
-        lananhState = status;
-        lananhVersion = version;
-
-        var title = document.getElementById('lananhTitle');
-        var desc = document.getElementById('lananhDesc');
-        var versionTag = document.getElementById('lananhVersionTag');
-        var progressSection = document.getElementById('lananhProgressSection');
-        var progressFill = document.getElementById('lananhProgressFill');
-        var progressText = document.getElementById('lananhProgressText');
-        var updateBtn = document.getElementById('lananhUpdateBtn');
-        var skipBtn = document.getElementById('lananhSkipBtn');
-        var btnGroup = document.getElementById('lananhBtnGroup');
-        var statusEl = document.getElementById('lananhStatus');
-        var overlay = document.getElementById('lananhUpdateOverlay');
-
-        if (status === 'checking') {
-          title.textContent = 'Dang kiem tra cap nhat...';
-          desc.textContent = 'Vui long cho trong giay lat...';
-          versionTag.style.display = 'none';
-          progressSection.style.display = 'none';
-          updateBtn.style.display = 'none';
-          skipBtn.style.display = 'none';
-          statusEl.textContent = '';
-        } else if (status === 'available') {
-          title.textContent = 'Phien ban moi san sang!';
-          desc.textContent = 'Co phien ban ' + version + ' moi. Ban co the cap nhat ngay hoac bo qua de su dung phien ban cu.';
-          versionTag.textContent = 'v' + version;
-          versionTag.style.display = 'inline-block';
-          progressSection.style.display = 'none';
-          updateBtn.style.display = 'inline-block';
-          updateBtn.textContent = 'Cap nhat ngay';
-          updateBtn.disabled = false;
-          skipBtn.style.display = 'inline-block';
-          skipBtn.textContent = 'Su dung phien ban cu';
-          btnGroup.style.display = 'flex';
-          statusEl.textContent = '';
-        } else if (status === 'downloading') {
-          title.textContent = 'Dang tai cap nhat...';
-          desc.textContent = 'Vui long cho, khong tat ung dung.';
-          versionTag.textContent = 'v' + version;
-          versionTag.style.display = 'inline-block';
-          progressSection.style.display = 'block';
-          progressFill.style.width = progress + '%';
-          progressText.textContent = Math.round(progress) + '% da tai';
-          updateBtn.style.display = 'none';
-          skipBtn.style.display = 'none';
-          btnGroup.style.display = 'none';
-          statusEl.textContent = '';
-        } else if (status === 'ready') {
-          title.textContent = 'San sang khoi dong lai';
-          desc.textContent = 'Cap nhat da tai xong. Khoi dong lai de su dung phien ban moi.';
-          versionTag.textContent = 'v' + version;
-          versionTag.style.display = 'inline-block';
-          progressSection.style.display = 'none';
-          updateBtn.style.display = 'inline-block';
-          updateBtn.textContent = 'Khoi dong lai ngay';
-          updateBtn.disabled = false;
-          skipBtn.style.display = 'inline-block';
-          skipBtn.textContent = 'Khoi dong sau';
-          btnGroup.style.display = 'flex';
-          statusEl.textContent = '';
-        } else if (status === 'no-update') {
-          overlay.style.display = 'none';
-          if (window.electronAPI) window.electronAPI.updateComplete();
-        } else if (status === 'error') {
-          title.textContent = 'Khong the kiem tra cap nhat';
-          desc.textContent = 'Da xay ra loi. Ban co the tiep tuc su dung phien ban hien tai.';
-          versionTag.style.display = 'none';
-          progressSection.style.display = 'none';
-          updateBtn.style.display = 'none';
-          skipBtn.style.display = 'inline-block';
-          skipBtn.textContent = 'Tiep tuc su dung';
-          btnGroup.style.display = 'flex';
-          statusEl.textContent = '';
-        }
-      }
-
-      function lananhHandleUpdate() {
-        if (lananhState === 'available' && window.electronAPI) {
-          window.electronAPI.startUpdateDownload();
-        } else if (lananhState === 'ready' && window.electronAPI) {
-          window.electronAPI.installAndRestart();
-        }
-      }
-
-      function lananhHandleSkip() {
-        if (window.electronAPI) window.electronAPI.updateComplete();
-      }
-
-      // Listen for messages from main process
-      if (window.electronAPI) {
-        window.electronAPI.onUpdateUI(function(data) {
-          lananhUpdateUI(data.status, data.progress, data.version);
-        });
-      }
-    </script>
-  `;
-
-  const escapedHTML = updateOverlayHTML.replace(/`/g, '\\`').replace(/\$/g, '\\$');
-
   const script = `
     (function() {
-      var existing = document.getElementById('lananhUpdateOverlay');
+      // Remove existing overlay
+      var existing = document.getElementById('lananh-update-overlay');
       if (existing) existing.remove();
 
-      var container = document.createElement('div');
-      container.innerHTML = \`${escapedHTML}\`;
-      document.body.appendChild(container);
+      // Create overlay
+      var overlay = document.createElement('div');
+      overlay.id = 'lananh-update-overlay';
+      overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.92);backdrop-filter:blur(8px);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:Segoe UI,Arial,sans-serif;';
 
-      // Update UI based on status
-      lananhUpdateUI('${status}', ${progress}, '${version}');
+      var currentVersion = '${version || app.getVersion()}';
+      var statusText = '';
+      var titleText = 'Dang kiem tra...';
+      var descText = 'Vui long cho trong giay lat...';
+      var showProgress = false;
+      var showUpdateBtn = false;
+      var showSkipBtn = false;
+      var updateBtnText = 'Cap nhat ngay';
+      var skipBtnText = 'Su dung phien ban cu';
+      var progressPercent = 0;
 
-      console.log('[LanAnh] Update UI injected');
+      if ('${status}' === 'checking') {
+        titleText = 'Dang kiem tra cap nhat...';
+        descText = 'Vui long cho trong giay lat...';
+      } else if ('${status}' === 'available') {
+        titleText = 'Phien ban moi san sang!';
+        descText = 'Co phien ban v' + currentVersion + ' moi. Ban co the cap nhat ngay hoac bo qua de su dung phien ban cu.';
+        showUpdateBtn = true;
+        showSkipBtn = true;
+        updateBtnText = 'Cap nhat ngay';
+        skipBtnText = 'Su dung phien ban cu';
+      } else if ('${status}' === 'downloading') {
+        titleText = 'Dang tai cap nhat...';
+        descText = 'Vui long cho, khong tat ung dung.';
+        showProgress = true;
+        progressPercent = ${progress};
+      } else if ('${status}' === 'ready') {
+        titleText = 'San sang khoi dong lai';
+        descText = 'Cap nhat da tai xong. Khoi dong lai de su dung phien ban moi.';
+        showUpdateBtn = true;
+        showSkipBtn = true;
+        updateBtnText = 'Khoi dong lai ngay';
+        skipBtnText = 'Khoi dong sau';
+      } else if ('${status}' === 'no-update') {
+        overlay.style.display = 'none';
+        if (window.electronAPI) window.electronAPI.updateComplete();
+        return;
+      } else if ('${status}' === 'error') {
+        titleText = 'Khong the kiem tra cap nhat';
+        descText = 'Da xay ra loi. Ban co the tiep tuc su dung phien ban hien tai.';
+        showSkipBtn = true;
+        skipBtnText = 'Tiep tuc su dung';
+      }
+
+      overlay.innerHTML =
+        '<div style="background:linear-gradient(145deg,#1a2744,#0f172a);border:1px solid rgba(95,141,120,0.3);border-radius:24px;padding:40px;width:100%;max-width:420px;text-align:center;box-shadow:0 25px 80px rgba(0,0,0,0.5);animation:fadeIn 0.3s ease;">' +
+        '<style>@keyframes fadeIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}</style>' +
+        '<div style="width:80px;height:80px;background:linear-gradient(135deg,#5F8D78,#4a6e5c);border-radius:50%;margin:0 auto 24px;display:flex;align-items:center;justify-content:center;font-size:36px;">&#11014;</div>' +
+        '<div id="lananh-version-tag" style="display:inline-block;background:linear-gradient(135deg,#5F8D78,#4a6e5c);color:#fff;padding:4px 16px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:16px;">v' + currentVersion + '</div>' +
+        '<h2 id="lananh-title" style="color:#f8fafc;font-size:20px;font-weight:700;margin-bottom:8px;">' + titleText + '</h2>' +
+        '<p id="lananh-desc" style="color:#94a3b8;font-size:13px;margin-bottom:28px;line-height:1.6;">' + descText + '</p>' +
+        '<div id="lananh-progress" style="display:' + (showProgress ? 'block' : 'none') + ';">' +
+        '<div style="width:100%;height:8px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;margin-bottom:10px;">' +
+        '<div id="lananh-progress-fill" style="height:100%;background:linear-gradient(90deg,#5F8D78,#4a6e5c);border-radius:4px;width:' + progressPercent + '%;transition:width 0.3s;"></div></div>' +
+        '<p id="lananh-progress-text" style="color:#94a3b8;font-size:12px;margin-bottom:20px;">' + Math.round(progressPercent) + '% da tai</p></div>' +
+        '<div id="lananh-btn-group" style="display:' + (showUpdateBtn || showSkipBtn ? 'flex' : 'none') + ';gap:12px;justify-content:center;">' +
+        (showUpdateBtn ? '<button id="lananh-update-btn" style="flex:1;min-width:120px;padding:12px 28px;background:linear-gradient(135deg,#5F8D78,#4a6e5c);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s;">' + updateBtnText + '</button>' : '') +
+        (showSkipBtn ? '<button id="lananh-skip-btn" style="flex:1;min-width:120px;padding:12px 28px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.15);border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;">' + skipBtnText + '</button>' : '') +
+        '</div>' +
+        '</div>';
+
+      document.body.appendChild(overlay);
+
+      // Add event listeners using addEventListener (not inline onclick)
+      var updateBtn = document.getElementById('lananh-update-btn');
+      var skipBtn = document.getElementById('lananh-skip-btn');
+
+      if (updateBtn) {
+        updateBtn.addEventListener('click', function() {
+          if ('${status}' === 'available' && window.electronAPI) {
+            window.electronAPI.startUpdateDownload();
+          } else if ('${status}' === 'ready' && window.electronAPI) {
+            window.electronAPI.installAndRestart();
+          }
+        });
+      }
+
+      if (skipBtn) {
+        skipBtn.addEventListener('click', function() {
+          if (window.electronAPI) window.electronAPI.updateComplete();
+        });
+      }
+
+      console.log('[LanAnh] Update UI injected, status: ${status}');
     })();
   `;
 
@@ -352,8 +170,8 @@ function hideUpdateOverlay() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.executeJavaScript(`
     (function() {
-      var overlay = document.getElementById('lananhUpdateOverlay');
-      if (overlay) overlay.style.display = 'none';
+      var overlay = document.getElementById('lananh-update-overlay');
+      if (overlay) overlay.remove();
     })();
   `).catch(() => {});
 }
@@ -439,6 +257,7 @@ function createExamWindow() {
     log(`[ExamWindow] did-finish-load: ${url}`);
     injectQuitButton();
 
+    // Only check update on login page
     if (url.includes('/login') && !updateCheckDone) {
       updateCheckDone = true;
       log('[App] On login page - checking for updates');
@@ -475,10 +294,24 @@ function createExamWindow() {
     }
   });
 
-  // Activate lockdown when navigating to student/teacher pages
+  // Activate lockdown ONLY on main exam pages (after login)
+  // NOT on login, update, or other auxiliary pages
   mainWindow.webContents.on('did-navigate-in-page', (_event, url) => {
     log(`[ExamWindow] did-navigate-in-page: ${url}`);
-    if (url.includes('/student/') || url.includes('/teacher/') || url.includes('/exam/')) {
+
+    // Check if it's a main exam page (NOT login/update)
+    const isMainExamPage =
+      (url.includes('/student/') && !url.includes('login')) ||
+      (url.includes('/teacher/') && !url.includes('login')) ||
+      url.includes('/exam/') ||
+      url.includes('/quiz/') ||
+      url.includes('/test/');
+
+    // Don't activate lockdown on login or update pages
+    const isLoginPage = url.includes('/login') || url.includes('/update');
+    const isAuthPage = url.includes('/auth/') || url.includes('/callback');
+
+    if (isMainExamPage && !isLoginPage && !isAuthPage) {
       activateLockdown();
     }
   });
@@ -507,10 +340,26 @@ button{background:#5F8D78;color:#fff;border:none;padding:14px 40px;border-radius
 }
 
 // ============================================================
-// QUIT BUTTON
+// QUIT BUTTON (only show when NOT in lockdown)
 // ============================================================
+let quitButtonInjected = false;
+
 function injectQuitButton() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  // Remove existing quit button first
+  const removeScript = `
+    (function() {
+      var existingBtn = document.getElementById('lananh-exit-btn');
+      var existingDialog = document.getElementById('lananh-exit-dialog');
+      if (existingBtn) existingBtn.remove();
+      if (existingDialog) existingDialog.remove();
+    })();
+  `;
+  mainWindow.webContents.executeJavaScript(removeScript).catch(() => {});
+
+  // Inject quit button only when NOT in lockdown
+  if (isLockdownActive) return;
 
   const script = `
     (function() {
@@ -538,15 +387,15 @@ function injectQuitButton() {
       '</div>';
       document.body.appendChild(dialog);
 
-      btn.querySelector('button').onclick = function() {
+      btn.querySelector('button').addEventListener('click', function() {
         dialog.style.display = 'flex';
         setTimeout(function() {
           var pwInput = document.getElementById('lananh-exit-pw');
           if (pwInput) pwInput.focus();
         }, 100);
-      };
+      });
 
-      dialog.onclick = function(e) {
+      dialog.addEventListener('click', function(e) {
         if (e.target === dialog) {
           dialog.style.display = 'none';
           var pwField = document.getElementById('lananh-exit-pw');
@@ -554,9 +403,9 @@ function injectQuitButton() {
           if (pwField) pwField.value = '';
           if (errField) errField.style.display = 'none';
         }
-      };
+      });
 
-      document.getElementById('lananh-exit-submit').onclick = function() {
+      document.getElementById('lananh-exit-submit').addEventListener('click', function() {
         var pw = document.getElementById('lananh-exit-pw').value;
         if (window.electronAPI) {
           window.electronAPI.verifyPassword(pw).then(function(r) {
@@ -569,17 +418,16 @@ function injectQuitButton() {
               if (pwEl) pwEl.value = '';
             }
           });
-        } else {
-          var errEl = document.getElementById('lananh-exit-err');
-          if (errEl) errEl.style.display = 'block';
         }
-      };
+      });
 
       console.log('[LanAnh] Exit button injected');
     })();
   `;
 
-  mainWindow.webContents.executeJavaScript(script);
+  mainWindow.webContents.executeJavaScript(script).catch((e) => {
+    log(`[QuitButton] Inject failed: ${e.message}`, 'ERROR');
+  });
 }
 
 // ============================================================
@@ -610,7 +458,7 @@ function stopForceFocus() {
 }
 
 // ============================================================
-// LOCKDOWN
+// LOCKDOWN (only on main exam pages)
 // ============================================================
 function activateLockdown() {
   if (isLockdownActive) return;
@@ -622,11 +470,12 @@ function activateLockdown() {
   log('[Lockdown] ACTIVATED');
 
   if (mainWindow && !mainWindow.isDestroyed()) {
+    // Hide quit button and update overlay when lockdown activates
     mainWindow.webContents.executeJavaScript(`
       (function() {
         var btn = document.getElementById('lananh-exit-btn');
         var dialog = document.getElementById('lananh-exit-dialog');
-        var overlay = document.getElementById('lananhUpdateOverlay');
+        var overlay = document.getElementById('lananh-update-overlay');
         if (btn) btn.style.display = 'none';
         if (dialog) dialog.style.display = 'none';
         if (overlay) overlay.style.display = 'none';
@@ -647,6 +496,8 @@ function deactivateLockdown() {
     mainWindow.setKiosk(false);
     mainWindow.setFullScreen(false);
     mainWindow.webContents.send('lockdown-deactivated');
+    // Re-inject quit button when lockdown deactivates
+    injectQuitButton();
   }
 }
 
