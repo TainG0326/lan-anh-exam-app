@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // App Info
   getVersion: () => ipcRenderer.invoke('app:get-version'),
   quit: () => ipcRenderer.invoke('app:quit'),
+  quitApp: () => ipcRenderer.invoke('app:quit-force'),
 
   // Update IPC
   startUpdateDownload: (url) => ipcRenderer.invoke('update:start-download', url),

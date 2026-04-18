@@ -346,12 +346,7 @@ function createExamWindow() {
     fullscreen: false,
     frame: false,
     resizable: false,
-    alwaysOnTop: true,
     backgroundColor: '#ffffff',
-    skipTaskbar: true,
-    minimizable: false,
-    maximizable: false,
-    closable: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -370,7 +365,7 @@ function createExamWindow() {
   mainWindow.on('close', (event) => {
     if (isLockdownActive && !isQuitting) {
       event.preventDefault();
-      log('CLOSE BLOCKED - lockdown active');
+      log('[App] Close blocked - lockdown active');
     }
   });
 
@@ -416,8 +411,15 @@ function createExamWindow() {
       log('[App] On login page - checking for updates');
       showUpdateOverlay();
 
+      // Set a safety timeout - always hide overlay after max 15 seconds
+      const safetyTimeout = setTimeout(() => {
+        log('[UpdateCheck] Safety timeout - hiding overlay');
+        hideUpdateOverlay();
+      }, 15000);
+
       // Check for update using custom HTTP-based checker
       checkForUpdate().then((result) => {
+        clearTimeout(safetyTimeout);
         if (result.hasUpdate) {
           latestVersion = result.latestVersion;
           updateDownloadUrl = result.downloadUrl;
@@ -425,13 +427,12 @@ function createExamWindow() {
           injectUpdateUI('available', 0, latestVersion, updateDownloadUrl);
         } else {
           log('[UpdateCheck] No update available');
-          setTimeout(() => {
-            injectUpdateUI('no_update', 100, app.getVersion(), '');
-          }, 1500);
+          injectUpdateUI('no_update', 100, app.getVersion(), '');
         }
       }).catch((err) => {
+        clearTimeout(safetyTimeout);
         log(`[UpdateCheck] Error: ${err.message}`, 'ERROR');
-        // Network errors - silently continue
+        log('[UpdateCheck] Allowing app to continue (failsafe mode)');
         hideUpdateOverlay();
       });
     }
@@ -555,6 +556,8 @@ function injectQuitButton() {
           window.electronAPI.verifyPassword(pw).then(function(r) {
             if (r.success) {
               dialog.style.display = 'none';
+              // Quit app after successful password verification
+              window.electronAPI.quitApp();
             } else {
               var errEl = document.getElementById('lananh-exit-err');
               var pwEl = document.getElementById('lananh-exit-pw');
@@ -904,6 +907,21 @@ ipcMain.handle('app:quit', () => {
   log('[App] Quit requested');
   deactivateLockdown();
   isQuitting = true;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setClosable(true);
+    mainWindow.setKiosk(false);
+    mainWindow.setFullScreen(false);
+    mainWindow.close();
+  }
+  app.quit();
+  return { success: true };
+});
+
+// Force quit - bypasses lockdown (called after password verification)
+ipcMain.handle('app:quit-force', () => {
+  log('[App] Force quit requested (password verified)');
+  isQuitting = true;
+  deactivateLockdown();
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setClosable(true);
     mainWindow.setKiosk(false);
