@@ -26,9 +26,8 @@ const CONFIG = {
   TARGET_URL: 'https://exam-web-azure.vercel.app/login',
   MASTER_PASSWORD: '123456789',
   SECRET_EXIT_COMBO: 'CommandOrControl+Alt+Shift+L',
-  UPDATE_CHECK_URL: 'https://raw.githubusercontent.com/TainG0326/web-for-teacher-and-student/main/electron-app/dist/latest.yml',
+  UPDATE_CHECK_URL: 'https://raw.githubusercontent.com/TainG0326/lan-anh-exam-app/main/dist/latest.yml',
   UPDATE_INSTALLER_NAME: 'Lan-Anh-Exam-System-Setup-',
-  UPDATE_INSTALLER_NAME: 'Lan Anh Exam System Setup ',
 };
 
 // ============================================================
@@ -118,7 +117,7 @@ async function checkForUpdate() {
         downloadUrl = urlMatch[1];
       } else {
         // Construct download URL from version
-        downloadUrl = `https://github.com/TainG0326/web-for-teacher-and-student/releases/download/v${serverVersion}/Lan-Anh-Exam-System-Setup-${serverVersion}.exe`;
+        downloadUrl = `https://github.com/TainG0326/lan-anh-exam-app/releases/download/v${serverVersion}/Lan-Anh-Exam-System-Setup-${serverVersion}.exe`;
       }
       log(`[UpdateCheck] Update available: v${serverVersion} (current: v${currentVersion})`);
       log(`[UpdateCheck] Download URL: ${downloadUrl}`);

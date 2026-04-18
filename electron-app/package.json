@@ -77,7 +77,7 @@
       "runAfterFinish": true,
       "installerIcon": "pubilc/Học viện Anh ngữ Lan Anh.ico",
       "uninstallerIcon": "pubilc/Học viện Anh ngữ Lan Anh.ico",
-      "artifactName": "${productName} Setup ${version}.${ext}",
+      "artifactName": "Lan-Anh-Exam-System-Setup-${version}.${ext}",
       "differentialPackage": false,
       "guid": "lan-anh-exam-unique-id"
     },
