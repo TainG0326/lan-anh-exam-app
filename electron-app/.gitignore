@@ -1,0 +1,8 @@
+node_modules/
+dist/*.exe
+dist/win-unpacked/
+.env
+*.log
+.DS_Store
+*.tmp
+*.bak

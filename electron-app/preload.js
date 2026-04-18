@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   quit: () => ipcRenderer.invoke('app:quit'),
 
   // Update IPC
-  startUpdateDownload: () => ipcRenderer.invoke('update:start-download'),
+  startUpdateDownload: (url) => ipcRenderer.invoke('update:start-download', url),
   installAndRestart: () => ipcRenderer.invoke('update:install-restart'),
   updateComplete: () => ipcRenderer.invoke('update:complete'),
   onUpdateUI: (callback) => {

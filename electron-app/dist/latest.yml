@@ -1,0 +1,7 @@
+version: 1.2.7
+files:
+  - url: https://github.com/TainG0326/web-for-teacher-and-student/releases/download/v1.2.7/Lan-Anh-Exam-System-Setup-1.2.7.exe
+    sha512: aGBEiCFnmq5htTo/tebajtQoxajV+BelLRKIAAKudfqMbfbfVwc93OhMyEbLuYgEDG5EABugh2ID4+kTQC0vgQ==
+path: Lan-Anh-Exam-System-Setup-1.2.7.exe
+sha512: aGBEiCFnmq5htTo/tebajtQoxajV+BelLRKIAAKudfqMbfbfVwc93OhMyEbLuYgEDG5EABugh2ID4+kTQC0vgQ==
+releaseDate: '2026-04-18T07:40:04.244Z'

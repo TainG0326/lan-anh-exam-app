@@ -1,6 +1,6 @@
 {
   "name": "lan-anh-exam-system",
-  "version": "1.2.5",
+  "version": "1.2.7",
   "description": "Lan Anh English Exam System - Secure Desktop Lockdown Browser",
   "main": "main.js",
   "scripts": {
@@ -32,8 +32,7 @@
     "sharp": "^0.34.5"
   },
   "dependencies": {
-    "dotenv": "^16.6.1",
-    "electron-updater": "^6.1.8"
+    "dotenv": "^16.6.1"
   },
   "build": {
     "appId": "com.lananh.examsystem",
