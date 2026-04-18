@@ -7,6 +7,24 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 
 // ============================================================
+// GLOBAL ERROR HANDLERS
+// ============================================================
+process.on('uncaughtException', (err) => {
+  const ts = new Date().toISOString();
+  console.error(`[${ts}] [FATAL] Uncaught Exception:`, err);
+  console.error(err.stack);
+  try {
+    dialog.showErrorBox('Application Error', `An unexpected error occurred:\n${err.message}`);
+  } catch (e) {}
+  app.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  const ts = new Date().toISOString();
+  console.error(`[${ts}] [ERROR] Unhandled Rejection at:`, promise, 'reason:', reason);
+});
+
+// ============================================================
 // APP STATE
 // ============================================================
 let isQuitting = false;
@@ -339,22 +357,30 @@ function createExamWindow() {
 
   log('[ExamWindow] Creating main window');
 
-  mainWindow = new BrowserWindow({
-    width: 1920,
-    height: 1080,
-    kiosk: false,
-    fullscreen: false,
-    frame: false,
-    resizable: false,
-    backgroundColor: '#ffffff',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-      webSecurity: true,
-    },
-  });
+  try {
+    mainWindow = new BrowserWindow({
+      width: 1920,
+      height: 1080,
+      kiosk: false,
+      fullscreen: false,
+      frame: false,
+      resizable: false,
+      backgroundColor: '#ffffff',
+      show: true,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        webSecurity: true,
+      },
+    });
+  } catch (err) {
+    log(`[ExamWindow] Failed to create window: ${err.message}`, 'ERROR');
+    dialog.showErrorBox('Startup Error', `Failed to create window: ${err.message}`);
+    app.quit();
+    return;
+  }
 
   mainWindow.setContentProtection(true);
   mainWindow.setMenu(null);
@@ -776,7 +802,16 @@ ipcMain.handle('exit:verify-password', (_event, password) => {
 // Custom update: open installer download URL in browser
 ipcMain.handle('update:start-download', (_event, url) => {
   log(`[Update] Starting download from: ${url}`);
+
+  // Validate URL before opening
   try {
+    const parsedUrl = new URL(url);
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      log(`[Update] Invalid protocol: ${parsedUrl.protocol}`, 'ERROR');
+      return { success: false, error: 'Invalid URL protocol' };
+    }
+
+    // Use shell.openExternal with proper validation
     shell.openExternal(url).then(() => {
       log('[Update] Installer opened in browser');
       // Show ready state - user will run the installer themselves
@@ -785,6 +820,20 @@ ipcMain.handle('update:start-download', (_event, url) => {
       }
     }).catch((err) => {
       log(`[Update] Failed to open URL: ${err.message}`, 'ERROR');
+      // Failsafe: try to show manual download instructions
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.executeJavaScript(`
+          (function() {
+            var existing = document.getElementById('lananh-update-overlay');
+            if (existing) existing.remove();
+            var overlay = document.createElement('div');
+            overlay.id = 'lananh-update-overlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:Segoe UI,sans-serif;';
+            overlay.innerHTML = '<div style="background:#fff;border-radius:16px;padding:32px;max-width:400px;text-align:center;"><h2 style="color:#dc2626;margin:0 0 12px;">Loi tai file</h2><p style="color:#666;margin:0 0 16px;">Vui long tai file thu cong tai:<br><a href="${url}" style="color:#5F8D78;word-break:break-all;">${url}</a></p><button onclick="document.getElementById(\\\'lananh-update-overlay\\\').remove()" style="padding:10px 24px;background:#5F8D78;color:#fff;border:none;border-radius:8px;cursor:pointer;">Dong</button></div>';
+            document.body.appendChild(overlay);
+          })();
+        `).catch(() => {});
+      }
     });
     return { success: true };
   } catch (err) {
@@ -944,7 +993,7 @@ if (!gotTheLock) {
 app.whenReady().then(() => {
   if (!gotTheLock) return;
 
-  log(`[App] Starting v${app.getVersion()}`);
+  log(`[App] Starting v${app.getVersion()} - Platform: ${process.platform}`);
 
   globalShortcut.register('CommandOrControl+Alt+Q', () => {
     log('[DEV] Force quit');
