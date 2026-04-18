@@ -23,6 +23,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-ui', (_event, data) => callback(data));
   },
 
+  // Auth - Test Account Bypass
+  checkTestAccount: (email) => ipcRenderer.invoke('auth:check-test-account', email),
+  verifyCredentials: (email, password) => ipcRenderer.invoke('auth:verify-credentials', email, password),
+  setTestAccountLogin: (isTestAccount) => ipcRenderer.invoke('auth:set-test-account-login', isTestAccount),
+
+  // Auth - Login Timeout Management
+  startLoginTimeout: () => ipcRenderer.invoke('auth:start-login-timeout'),
+  clearLoginTimeout: () => ipcRenderer.invoke('auth:clear-login-timeout'),
+
   // Event listeners
   onLockdownActivated: (callback) => ipcRenderer.on('lockdown-activated', callback),
   onLockdownDeactivated: (callback) => ipcRenderer.on('lockdown-deactivated', callback),

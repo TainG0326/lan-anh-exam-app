@@ -15,9 +15,12 @@ let isLockdownActive = false;
 let focusViolationCount = 0;
 let focusIntervalId = null;
 let updateCheckDone = false;
+let isUpdateRequired = false;
 let latestVersion = '';
 let updateDownloadUrl = '';
 let updateInstallerPath = null;
+let loginTimeoutId = null;
+let isTestAccountLoggedIn = false;
 
 // ============================================================
 // CONFIGURATION
@@ -26,8 +29,12 @@ const CONFIG = {
   TARGET_URL: 'https://exam-web-azure.vercel.app/login',
   MASTER_PASSWORD: '123456789',
   SECRET_EXIT_COMBO: 'CommandOrControl+Alt+Shift+L',
-  UPDATE_CHECK_URL: 'https://raw.githubusercontent.com/TainG0326/lan-anh-exam-app/main/dist/latest.yml',
+  UPDATE_CHECK_URL: 'https://raw.githubusercontent.com/TainG0326/lan-anh-exam-app/refs/heads/main/electron-app/dist/latest.yml',
   UPDATE_INSTALLER_NAME: 'Lan-Anh-Exam-System-Setup-',
+  UPDATE_TIMEOUT_MS: 10000,
+  LOGIN_TIMEOUT_MS: 10000,
+  TEST_ACCOUNT_EMAIL: 'thaitai824@gmail.com',
+  TEST_ACCOUNT_PASSWORD: 'Thaitai01020304',
 };
 
 // ============================================================
@@ -39,24 +46,13 @@ function log(msg, level = 'INFO') {
 }
 
 // ============================================================
-// UTILITY FUNCTIONS
-// ============================================================
-function getDisplayCount() {
-  return screen.getAllDisplays().length;
-}
-
-function isMultiMonitor() {
-  return getDisplayCount() > 1;
-}
-
-// ============================================================
 // CUSTOM UPDATE CHECKER (replaces electron-updater)
 // ============================================================
-function fetchUrl(url, timeoutMs = 15000) {
+function fetchUrl(url, timeoutMs) {
   return new Promise((resolve, reject) => {
     const parsedUrl = new URL(url);
     const lib = parsedUrl.protocol === 'https:' ? https : http;
-    const req = lib.get(url, { timeout: timeoutMs, headers: { 'User-Agent': 'LanAnhExamSystem/1.0' } }, (res) => {
+    const req = lib.get(url, { timeout: timeoutMs || CONFIG.UPDATE_TIMEOUT_MS, headers: { 'User-Agent': 'LanAnhExamSystem/1.0' } }, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
         const redirectUrl = res.headers.location;
         if (redirectUrl) {
@@ -96,7 +92,7 @@ function compareVersions(current, latest) {
 }
 
 async function checkForUpdate() {
-  log('[UpdateCheck] Checking for updates...');
+  log('[UpdateCheck] Checking app version...');
   try {
     const content = await fetchUrl(CONFIG.UPDATE_CHECK_URL);
     const versionMatch = content.match(/^version:\s*([^\s]+)/m);
@@ -109,6 +105,9 @@ async function checkForUpdate() {
 
     const serverVersion = versionMatch[1];
     const currentVersion = app.getVersion();
+
+    log(`[UpdateCheck] Latest version: ${serverVersion}`);
+
     const hasUpdate = compareVersions(currentVersion, serverVersion) < 0;
 
     if (hasUpdate) {
@@ -116,18 +115,18 @@ async function checkForUpdate() {
       if (urlMatch) {
         downloadUrl = urlMatch[1];
       } else {
-        // Construct download URL from version
         downloadUrl = `https://github.com/TainG0326/lan-anh-exam-app/releases/download/v${serverVersion}/Lan-Anh-Exam-System-Setup-${serverVersion}.exe`;
       }
-      log(`[UpdateCheck] Update available: v${serverVersion} (current: v${currentVersion})`);
+      log(`[UpdateCheck] Update required: v${serverVersion} (current: v${currentVersion})`);
       log(`[UpdateCheck] Download URL: ${downloadUrl}`);
       return { hasUpdate: true, latestVersion: serverVersion, downloadUrl };
     } else {
-      log(`[UpdateCheck] No update. Server: v${serverVersion}, Current: v${currentVersion}`);
+      log(`[UpdateCheck] App is up to date. Server: v${serverVersion}, Current: v${currentVersion}`);
       return { hasUpdate: false, latestVersion: serverVersion };
     }
   } catch (err) {
     log(`[UpdateCheck] Failed: ${err.message}`, 'WARN');
+    log('[UpdateCheck] Allowing app to continue (failsafe mode)');
     return { hasUpdate: false, latestVersion: app.getVersion() };
   }
 }
@@ -607,6 +606,17 @@ function stopForceFocus() {
 // ============================================================
 function activateLockdown() {
   if (isLockdownActive) return;
+
+  // TEST ACCOUNT BYPASS: Skip lockdown for test account
+  if (isTestAccountLoggedIn) {
+    log('[Lockdown] SKIPPED - Test account bypass active');
+    injectQuitButton();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('lockdown-deactivated');
+    }
+    return;
+  }
+
   focusViolationCount = 0;
   isLockdownActive = true;
   registerAllShortcuts();
@@ -830,6 +840,62 @@ ipcMain.handle('app:get-version', () => ({
   version: app.getVersion(),
   name: 'Lan Anh Exam System',
 }));
+
+// Check if email is test account
+ipcMain.handle('auth:check-test-account', (_event, email) => {
+  const isTestAccount = email && email.toLowerCase() === CONFIG.TEST_ACCOUNT_EMAIL.toLowerCase();
+  log(`[Auth] Checking test account: ${email} -> ${isTestAccount ? 'BYPASS' : 'Normal'}`);
+  return { isTestAccount };
+});
+
+// Verify login credentials (for test account bypass)
+ipcMain.handle('auth:verify-credentials', (_event, email, password) => {
+  const isTestAccount = email && email.toLowerCase() === CONFIG.TEST_ACCOUNT_EMAIL.toLowerCase();
+  const isValid = isTestAccount && password === CONFIG.TEST_ACCOUNT_PASSWORD;
+  log(`[Auth] Verify credentials: ${email} -> ${isValid ? 'SUCCESS' : 'FAILED'}`);
+  return { success: isValid, isTestAccount };
+});
+
+// Set test account login state (bypass lockdown)
+ipcMain.handle('auth:set-test-account-login', (_event, isTestAccount) => {
+  isTestAccountLoggedIn = isTestAccount;
+  log(`[Auth] Test account login state: ${isTestAccount}`);
+  return { success: true };
+});
+
+// Login timeout management
+ipcMain.handle('auth:start-login-timeout', () => {
+  if (loginTimeoutId) {
+    clearTimeout(loginTimeoutId);
+  }
+  loginTimeoutId = setTimeout(() => {
+    log('[Auth] Login timeout reached (10s)', 'WARN');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.executeJavaScript(`
+        (function() {
+          var el = document.querySelector('[class*="spinner"], [class*="Loader"], [class*="loading"]');
+          if (el) el.remove();
+          var msg = document.createElement('div');
+          msg.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;z-index:9999;';
+          msg.textContent = 'Ket noi cham. Vui long thu lai.';
+          document.body.appendChild(msg);
+          setTimeout(() => msg.remove(), 5000);
+        })();
+      `).catch(() => {});
+    }
+  }, CONFIG.LOGIN_TIMEOUT_MS);
+  log('[Auth] Login timeout started');
+  return { success: true };
+});
+
+ipcMain.handle('auth:clear-login-timeout', () => {
+  if (loginTimeoutId) {
+    clearTimeout(loginTimeoutId);
+    loginTimeoutId = null;
+    log('[Auth] Login timeout cleared');
+  }
+  return { success: true };
+});
 
 ipcMain.handle('app:quit', () => {
   if (isLockdownActive && !isQuitting) {
