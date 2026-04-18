@@ -11,7 +11,7 @@ const fs = require('fs');
 // ============================================================
 process.on('uncaughtException', (err) => {
   const ts = new Date().toISOString();
-  console.error(`[${ts}] [FATAL] Uncaught Exception:`, err);
+  console.error(`[${ts}] [FATAL] Uncaught Exception:`, err.message);
   console.error(err.stack);
   try {
     dialog.showErrorBox('Application Error', `An unexpected error occurred:\n${err.message}`);
@@ -21,7 +21,7 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason, promise) => {
   const ts = new Date().toISOString();
-  console.error(`[${ts}] [ERROR] Unhandled Rejection at:`, promise, 'reason:', reason);
+  console.error(`[${ts}] [ERROR] Unhandled Rejection:`, reason);
 });
 
 // ============================================================
@@ -33,12 +33,11 @@ let isLockdownActive = false;
 let focusViolationCount = 0;
 let focusIntervalId = null;
 let updateCheckDone = false;
-let isUpdateRequired = false;
 let latestVersion = '';
 let updateDownloadUrl = '';
-let updateInstallerPath = null;
 let loginTimeoutId = null;
 let isTestAccountLoggedIn = false;
+let pageLoadTimeoutId = null;
 
 // ============================================================
 // CONFIGURATION
@@ -48,9 +47,10 @@ const CONFIG = {
   MASTER_PASSWORD: '123456789',
   SECRET_EXIT_COMBO: 'CommandOrControl+Alt+Shift+L',
   UPDATE_CHECK_URL: 'https://raw.githubusercontent.com/TainG0326/lan-anh-exam-app/refs/heads/main/electron-app/dist/latest.yml',
-  UPDATE_INSTALLER_NAME: 'Lan-Anh-Exam-System-Setup-',
-  UPDATE_TIMEOUT_MS: 10000,
+  UPDATE_TIMEOUT_MS: 8000,
   LOGIN_TIMEOUT_MS: 10000,
+  DOM_READY_DELAY_MS: 500,
+  PAGE_LOAD_TIMEOUT_MS: 30000,
   TEST_ACCOUNT_EMAIL: 'thaitai824@gmail.com',
   TEST_ACCOUNT_PASSWORD: 'Thaitai01020304',
 };
@@ -64,49 +64,61 @@ function log(msg, level = 'INFO') {
 }
 
 // ============================================================
-// CUSTOM UPDATE CHECKER (replaces electron-updater)
+// UPDATE CHECKER
 // ============================================================
 function fetchUrl(url, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const parsedUrl = new URL(url);
-    const lib = parsedUrl.protocol === 'https:' ? https : http;
-    const req = lib.get(url, { timeout: timeoutMs || CONFIG.UPDATE_TIMEOUT_MS, headers: { 'User-Agent': 'LanAnhExamSystem/1.0' } }, (res) => {
-      if (res.statusCode === 301 || res.statusCode === 302) {
-        const redirectUrl = res.headers.location;
-        if (redirectUrl) {
-          log(`[UpdateCheck] Redirecting to: ${redirectUrl}`);
-          resolve(fetchUrl(redirectUrl, timeoutMs));
+    try {
+      const parsedUrl = new URL(url);
+      const lib = parsedUrl.protocol === 'https:' ? https : http;
+      const req = lib.get(url, { timeout: timeoutMs || CONFIG.UPDATE_TIMEOUT_MS, headers: { 'User-Agent': 'LanAnhExamSystem/1.0' } }, (res) => {
+        if (res.statusCode === 301 || res.statusCode === 302) {
+          const redirectUrl = res.headers.location;
+          if (redirectUrl) {
+            log(`[UpdateCheck] Redirecting to: ${redirectUrl}`);
+            resolve(fetchUrl(redirectUrl, timeoutMs));
+            return;
+          }
+        }
+        if (res.statusCode !== 200) {
+          reject(new Error(`HTTP ${res.statusCode}`));
           return;
         }
-      }
-      if (res.statusCode !== 200) {
-        reject(new Error(`HTTP ${res.statusCode}`));
-        return;
-      }
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => resolve(data));
-    });
-    req.on('error', (e) => reject(e));
-    req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => resolve(data));
+      });
+      req.on('error', (e) => reject(e));
+      req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+    } catch (err) {
+      reject(err);
+    }
   });
 }
 
 function parseVersion(versionStr) {
-  const cleaned = versionStr.replace(/^v/, '').trim();
-  const parts = cleaned.split('.').map(Number);
-  while (parts.length < 3) parts.push(0);
-  return parts;
+  try {
+    const cleaned = versionStr.replace(/^v/, '').trim();
+    const parts = cleaned.split('.').map(Number);
+    while (parts.length < 3) parts.push(0);
+    return parts;
+  } catch (e) {
+    return [0, 0, 0];
+  }
 }
 
 function compareVersions(current, latest) {
-  const a = parseVersion(current);
-  const b = parseVersion(latest);
-  for (let i = 0; i < 3; i++) {
-    if (a[i] < b[i]) return -1;
-    if (a[i] > b[i]) return 1;
+  try {
+    const a = parseVersion(current);
+    const b = parseVersion(latest);
+    for (let i = 0; i < 3; i++) {
+      if (a[i] < b[i]) return -1;
+      if (a[i] > b[i]) return 1;
+    }
+    return 0;
+  } catch (e) {
+    return 0;
   }
-  return 0;
 }
 
 async function checkForUpdate() {
@@ -136,7 +148,6 @@ async function checkForUpdate() {
         downloadUrl = `https://github.com/TainG0326/lan-anh-exam-app/releases/download/v${serverVersion}/Lan-Anh-Exam-System-Setup-${serverVersion}.exe`;
       }
       log(`[UpdateCheck] Update required: v${serverVersion} (current: v${currentVersion})`);
-      log(`[UpdateCheck] Download URL: ${downloadUrl}`);
       return { hasUpdate: true, latestVersion: serverVersion, downloadUrl };
     } else {
       log(`[UpdateCheck] App is up to date. Server: v${serverVersion}, Current: v${currentVersion}`);
@@ -150,207 +161,271 @@ async function checkForUpdate() {
 }
 
 // ============================================================
-// INJECT UPDATE UI (as overlay in main window)
+// SAFE DOM INJECTION UTILITIES
 // ============================================================
+
+// Check if DOM is ready for manipulation
+function isDOMReady() {
+  try {
+    return typeof document !== 'undefined' && document.body && document.readyState !== 'loading';
+  } catch (e) {
+    return false;
+  }
+}
+
+// Wait for DOM to be ready with maximum wait time
+function waitForDOMReady(maxWaitMs) {
+  return new Promise((resolve) => {
+    if (isDOMReady()) {
+      resolve(true);
+      return;
+    }
+
+    let waited = 0;
+    const interval = setInterval(() => {
+      waited += 100;
+      if (isDOMReady()) {
+        clearInterval(interval);
+        resolve(true);
+        return;
+      }
+      if (waited >= maxWaitMs) {
+        clearInterval(interval);
+        resolve(false);
+      }
+    }, 100);
+  });
+}
+
+// Safe execute JavaScript in renderer
+function safeExecuteJavaScript(script, fallback) {
+  return new Promise((resolve) => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      resolve(false);
+      return;
+    }
+
+    mainWindow.webContents.executeJavaScript(script).then(() => {
+      resolve(true);
+    }).catch((err) => {
+      log(`[ExecuteJS] Failed: ${err.message}`, 'WARN');
+      if (fallback) fallback();
+      resolve(false);
+    });
+  });
+}
+
+// ============================================================
+// INJECT UPDATE UI
+// ============================================================
+let updateOverlayActive = false;
+
 function injectUpdateUI(status, progress, version, downloadUrl) {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
+  log(`[UpdateUI] Injecting status=${status}, progress=${progress}`);
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    log('[UpdateUI] Window not available', 'WARN');
+    return;
+  }
 
   const currentVersion = version || app.getVersion();
   const dlUrl = downloadUrl || '';
 
+  // Use template literal properly - status is evaluated at call time
+  const escapedStatus = String(status).replace(/'/g, "\\'");
+  const escapedVersion = String(currentVersion).replace(/'/g, "\\'");
+  const escapedUrl = String(dlUrl).replace(/'/g, "\\'");
+
   const script = `
     (function() {
-      var existing = document.getElementById('lananh-update-overlay');
-      if (existing) existing.remove();
+      // Wait for DOM to be ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', doInject);
+      } else {
+        setTimeout(doInject, 300);
+      }
 
-      var statusConfig = {
-        checking: {
-          title: 'Dang kiem tra cap nhat...',
-          desc: 'Vui long cho trong giay lat...',
-          showProgress: false,
-          showUpdateBtn: false,
-          showSkipBtn: false,
-          icon: '&#128269;',
-          progress: 0
-        },
-        available: {
-          title: 'Phien ban moi san sang!',
-          desc: 'Co phien ban v${currentVersion} moi. Ban co the cap nhat ngay hoac bo qua de su dung phien ban hien tai.',
-          showProgress: false,
-          showUpdateBtn: true,
-          showSkipBtn: true,
-          updateBtnText: 'Cap nhat ngay',
-          skipBtnText: 'Su dung phien ban cu',
-          icon: '&#128233;',
-          progress: 0
-        },
-        downloading: {
-          title: 'Dang tai cap nhat...',
-          desc: 'Vui long cho, khong tat ung dung trong luc tai.',
-          showProgress: true,
-          showUpdateBtn: false,
-          showSkipBtn: false,
-          icon: '&#11015;',
-          progress: ${progress}
-        },
-        ready: {
-          title: 'San sang khoi dong lai',
-          desc: 'Cap nhat da tai xong. Khoi dong lai de hoan tat cai dat phien ban moi.',
-          showProgress: false,
-          showUpdateBtn: true,
-          showSkipBtn: true,
-          updateBtnText: 'Khoi dong lai ngay',
-          skipBtnText: 'Khoi dong sau',
-          icon: '&#10004;',
-          progress: 100
-        },
-        no_update: {
-          title: 'Ban dang su dung phien ban moi nhat',
-          desc: 'Khong co cap nhat moi. Chuc ban hoc tot!',
-          showProgress: false,
-          showUpdateBtn: false,
-          showSkipBtn: false,
-          icon: '&#128076;',
-          progress: 100
-        },
-        error: {
-          title: 'Khong the kiem tra cap nhat',
-          desc: 'Da xay ra loi khi kiem tra cap nhat. Ban co the tiep tuc su dung phien ban hien tai.',
-          showProgress: false,
-          showUpdateBtn: false,
-          showSkipBtn: true,
-          skipBtnText: 'Tiep tuc su dung',
-          icon: '&#9888;',
-          progress: 0
+      function doInject() {
+        try {
+          var existing = document.getElementById('lananh-update-overlay');
+          if (existing) existing.remove();
+
+          var statusConfig = {
+            checking: {
+              title: 'Dang kiem tra cap nhat...',
+              desc: 'Vui long cho trong giay lat...',
+              showProgress: false,
+              showUpdateBtn: false,
+              showSkipBtn: false,
+              icon: '&#128269;',
+              progress: 0
+            },
+            available: {
+              title: 'Phien ban moi san sang!',
+              desc: 'Co phien ban v${escapedVersion} moi. Ban co the cap nhat ngay hoac bo qua de su dung phien ban hien tai.',
+              showProgress: false,
+              showUpdateBtn: true,
+              showSkipBtn: true,
+              updateBtnText: 'Cap nhat ngay',
+              skipBtnText: 'Su dung phien ban cu',
+              icon: '&#128233;',
+              progress: 0
+            },
+            downloading: {
+              title: 'Dang tai cap nhat...',
+              desc: 'Vui long cho, khong tat ung dung trong luc tai.',
+              showProgress: true,
+              showUpdateBtn: false,
+              showSkipBtn: false,
+              icon: '&#11015;',
+              progress: ${progress}
+            },
+            ready: {
+              title: 'San sang khoi dong lai',
+              desc: 'Cap nhat da tai xong. Khoi dong lai de hoan tat cai dat phien ban moi.',
+              showProgress: false,
+              showUpdateBtn: true,
+              showSkipBtn: true,
+              updateBtnText: 'Khoi dong lai ngay',
+              skipBtnText: 'Khoi dong sau',
+              icon: '&#10004;',
+              progress: 100
+            },
+            no_update: {
+              title: 'Ban dang su dung phien ban moi nhat',
+              desc: 'Khong co cap nhat moi. Chuc ban hoc tot!',
+              showProgress: false,
+              showUpdateBtn: false,
+              showSkipBtn: false,
+              icon: '&#128076;',
+              progress: 100
+            },
+            error: {
+              title: 'Khong the kiem tra cap nhat',
+              desc: 'Da xay ra loi khi kiem tra cap nhat. Ban co the tiep tuc su dung phien ban hien tai.',
+              showProgress: false,
+              showUpdateBtn: false,
+              showSkipBtn: true,
+              skipBtnText: 'Tiep tuc su dung',
+              icon: '&#9888;',
+              progress: 0
+            }
+          };
+
+          var config = statusConfig['${escapedStatus}'] || statusConfig.checking;
+
+          var overlay = document.createElement('div');
+          overlay.id = 'lananh-update-overlay';
+          overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:Inter,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;animation:fadeInOverlay 0.3s ease;';
+
+          var card = document.createElement('div');
+          card.style.cssText = 'background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.15);padding:40px;width:100%;max-width:400px;margin:20px;text-align:center;animation:scaleInCard 0.3s ease;';
+
+          var iconDiv = document.createElement('div');
+          iconDiv.style.cssText = 'width:72px;height:72px;background:linear-gradient(135deg,#5F8D78,#4a6e5c);border-radius:50%;margin:0 auto 20px;display:flex;align-items:center;justify-content:center;font-size:32px;';
+          iconDiv.innerHTML = config.icon;
+
+          var versionTag = document.createElement('div');
+          versionTag.style.cssText = 'display:inline-block;background:#f0f9f6;color:#5F8D78;padding:4px 14px;border-radius:20px;font-size:11px;font-weight:600;margin-bottom:14px;';
+          versionTag.textContent = 'v${escapedVersion}';
+
+          var title = document.createElement('h2');
+          title.style.cssText = 'color:#1f2937;font-size:18px;font-weight:700;margin:0 0 8px;';
+          title.textContent = config.title;
+
+          var desc = document.createElement('p');
+          desc.style.cssText = 'color:#6b7280;font-size:13px;margin:0 0 24px;line-height:1.6;';
+          desc.textContent = config.desc;
+
+          var progressSection = document.createElement('div');
+          progressSection.style.cssText = 'display:' + (config.showProgress ? 'block' : 'none') + ';margin-bottom:20px;';
+          var progressBar = document.createElement('div');
+          progressBar.style.cssText = 'width:100%;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:8px;';
+          var progressFill = document.createElement('div');
+          progressFill.style.cssText = 'height:100%;background:linear-gradient(90deg,#5F8D78,#4a6e5c);border-radius:4px;width:' + config.progress + '%;transition:width 0.3s ease;';
+          progressBar.appendChild(progressFill);
+          var progressText = document.createElement('p');
+          progressText.style.cssText = 'color:#6b7280;font-size:12px;margin:0;';
+          progressText.textContent = Math.round(config.progress) + '%';
+          progressSection.appendChild(progressBar);
+          progressSection.appendChild(progressText);
+
+          var btnGroup = document.createElement('div');
+          btnGroup.style.cssText = 'display:' + (config.showUpdateBtn || config.showSkipBtn ? 'flex' : 'none') + ';gap:12px;';
+
+          if (config.showUpdateBtn) {
+            var updateBtn = document.createElement('button');
+            updateBtn.style.cssText = 'flex:1;padding:12px 20px;background:linear-gradient(135deg,#5F8D78,#4a6e5c);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;';
+            updateBtn.textContent = config.updateBtnText || 'Cap nhat ngay';
+            updateBtn.addEventListener('click', function() {
+              if (window.electronAPI) window.electronAPI.startUpdateDownload('${escapedUrl}');
+            });
+            btnGroup.appendChild(updateBtn);
+          }
+
+          if (config.showSkipBtn) {
+            var skipBtn = document.createElement('button');
+            skipBtn.style.cssText = 'flex:1;padding:12px 20px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.2s;';
+            skipBtn.textContent = config.skipBtnText || 'Bo qua';
+            skipBtn.addEventListener('click', function() {
+              if (window.electronAPI) window.electronAPI.updateComplete();
+            });
+            btnGroup.appendChild(skipBtn);
+          }
+
+          card.appendChild(iconDiv);
+          card.appendChild(versionTag);
+          card.appendChild(title);
+          card.appendChild(desc);
+          card.appendChild(progressSection);
+          card.appendChild(btnGroup);
+          overlay.appendChild(card);
+          document.body.appendChild(overlay);
+
+          var style = document.createElement('style');
+          style.textContent = '@keyframes fadeInOverlay{from{opacity:0}to{opacity:1}}@keyframes scaleInCard{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}';
+          document.head.appendChild(style);
+
+          if ('${escapedStatus}' === 'no_update') {
+            setTimeout(function() {
+              if (window.electronAPI) window.electronAPI.updateComplete();
+            }, 2000);
+          }
+
+          console.log('[LanAnh] Update UI injected, status: ${escapedStatus}');
+        } catch (e) {
+          console.error('[LanAnh] Update UI injection error:', e.message);
         }
-      };
-
-      var config = statusConfig['${status}'] || statusConfig.checking;
-
-      var overlay = document.createElement('div');
-      overlay.id = 'lananh-update-overlay';
-      overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:Inter,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;animation:fadeInOverlay 0.3s ease;';
-
-      var card = document.createElement('div');
-      card.style.cssText = 'background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.15);padding:40px;width:100%;max-width:400px;margin:20px;text-align:center;animation:scaleInCard 0.3s ease;';
-
-      var iconDiv = document.createElement('div');
-      iconDiv.style.cssText = 'width:72px;height:72px;background:linear-gradient(135deg,#5F8D78,#4a6e5c);border-radius:50%;margin:0 auto 20px;display:flex;align-items:center;justify-content:center;font-size:32px;';
-      iconDiv.innerHTML = config.icon;
-
-      var versionTag = document.createElement('div');
-      versionTag.style.cssText = 'display:inline-block;background:#f0f9f6;color:#5F8D78;padding:4px 14px;border-radius:20px;font-size:11px;font-weight:600;margin-bottom:14px;';
-      versionTag.textContent = 'v' + currentVersion;
-
-      var title = document.createElement('h2');
-      title.style.cssText = 'color:#1f2937;font-size:18px;font-weight:700;margin:0 0 8px;';
-      title.textContent = config.title;
-
-      var desc = document.createElement('p');
-      desc.style.cssText = 'color:#6b7280;font-size:13px;margin:0 0 24px;line-height:1.6;';
-      desc.textContent = config.desc;
-
-      var progressSection = document.createElement('div');
-      progressSection.style.cssText = 'display:' + (config.showProgress ? 'block' : 'none') + ';margin-bottom:20px;';
-      var progressBar = document.createElement('div');
-      progressBar.style.cssText = 'width:100%;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:8px;';
-      var progressFill = document.createElement('div');
-      progressFill.id = 'lananh-progress-fill';
-      progressFill.style.cssText = 'height:100%;background:linear-gradient(90deg,#5F8D78,#4a6e5c);border-radius:4px;width:' + config.progress + '%;transition:width 0.3s ease;';
-      progressBar.appendChild(progressFill);
-      var progressText = document.createElement('p');
-      progressText.id = 'lananh-progress-text';
-      progressText.style.cssText = 'color:#6b7280;font-size:12px;margin:0;';
-      progressText.textContent = Math.round(config.progress) + '%';
-      progressSection.appendChild(progressBar);
-      progressSection.appendChild(progressText);
-
-      var btnGroup = document.createElement('div');
-      btnGroup.style.cssText = 'display:' + (config.showUpdateBtn || config.showSkipBtn ? 'flex' : 'none') + ';gap:12px;';
-
-      if (config.showUpdateBtn) {
-        var updateBtn = document.createElement('button');
-        updateBtn.id = 'lananh-update-btn';
-        updateBtn.style.cssText = 'flex:1;padding:12px 20px;background:linear-gradient(135deg,#5F8D78,#4a6e5c);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;';
-        updateBtn.textContent = config.updateBtnText || 'Cap nhat ngay';
-        updateBtn.addEventListener('click', function() {
-          if (window.electronAPI) window.electronAPI.startUpdateDownload('${dlUrl}');
-        });
-        updateBtn.addEventListener('mouseenter', function() {
-          this.style.opacity = '0.9';
-          this.style.transform = 'translateY(-1px)';
-        });
-        updateBtn.addEventListener('mouseleave', function() {
-          this.style.opacity = '1';
-          this.style.transform = 'translateY(0)';
-        });
-        btnGroup.appendChild(updateBtn);
       }
-
-      if (config.showSkipBtn) {
-        var skipBtn = document.createElement('button');
-        skipBtn.id = 'lananh-skip-btn';
-        skipBtn.style.cssText = 'flex:1;padding:12px 20px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.2s;';
-        skipBtn.textContent = config.skipBtnText || 'Bo qua';
-        skipBtn.addEventListener('click', function() {
-          if (window.electronAPI) window.electronAPI.updateComplete();
-        });
-        skipBtn.addEventListener('mouseenter', function() {
-          this.background = '#e5e7eb';
-        });
-        skipBtn.addEventListener('mouseleave', function() {
-          this.background = '#f3f4f6';
-        });
-        btnGroup.appendChild(skipBtn);
-      }
-
-      card.appendChild(iconDiv);
-      card.appendChild(versionTag);
-      card.appendChild(title);
-      card.appendChild(desc);
-      card.appendChild(progressSection);
-      card.appendChild(btnGroup);
-      overlay.appendChild(card);
-      document.body.appendChild(overlay);
-
-      var style = document.createElement('style');
-      style.textContent = '@keyframes fadeInOverlay{from{opacity:0}to{opacity:1}}@keyframes scaleInCard{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}';
-      document.head.appendChild(style);
-
-      if ('${status}' === 'no_update') {
-        setTimeout(function() {
-          if (window.electronAPI) window.electronAPI.updateComplete();
-        }, 2000);
-      }
-
-      console.log('[LanAnh] Update UI injected, status: ${status}');
     })();
   `;
 
-  mainWindow.webContents.executeJavaScript(script).catch((e) => {
-    log(`[Update] Inject failed: ${e.message}`, 'ERROR');
-  });
+  safeExecuteJavaScript(script);
 }
 
 function showUpdateOverlay() {
+  updateOverlayActive = true;
   injectUpdateUI('checking', 0, app.getVersion(), '');
 }
 
 function hideUpdateOverlay() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  mainWindow.webContents.executeJavaScript(`
+  updateOverlayActive = false;
+  safeExecuteJavaScript(`
     (function() {
       var overlay = document.getElementById('lananh-update-overlay');
       if (overlay) overlay.remove();
     })();
-  `).catch(() => {});
+  `);
 }
 
 // ============================================================
 // MAIN EXAM WINDOW
 // ============================================================
 function createExamWindow() {
+  log('[ExamWindow] createExamWindow() called');
+
   if (mainWindow && !mainWindow.isDestroyed()) {
+    log('[ExamWindow] Window already exists, focusing');
     mainWindow.focus();
     return;
   }
@@ -375,10 +450,13 @@ function createExamWindow() {
         webSecurity: true,
       },
     });
+    log('[ExamWindow] BrowserWindow created successfully');
   } catch (err) {
     log(`[ExamWindow] Failed to create window: ${err.message}`, 'ERROR');
-    dialog.showErrorBox('Startup Error', `Failed to create window: ${err.message}`);
-    app.quit();
+    try {
+      dialog.showErrorBox('Startup Error', `Failed to create window: ${err.message}`);
+    } catch (e) {}
+    app.exit(1);
     return;
   }
 
@@ -388,6 +466,21 @@ function createExamWindow() {
   mainWindow.setAutoHideMenuBar(true);
   Menu.setApplicationMenu(null);
 
+  // ---- PAGE LOAD TIMEOUT (BUG FIX #4) ----
+  if (pageLoadTimeoutId) clearTimeout(pageLoadTimeoutId);
+  pageLoadTimeoutId = setTimeout(() => {
+    log('[ExamWindow] Page load timeout reached!', 'ERROR');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.executeJavaScript(`
+        (function() {
+          var existing = document.getElementById('lananh-update-overlay');
+          if (existing) existing.remove();
+        })();
+      `).catch(() => {});
+    }
+  }, CONFIG.PAGE_LOAD_TIMEOUT_MS);
+
+  // ---- CLOSE HANDLER ----
   mainWindow.on('close', (event) => {
     if (isLockdownActive && !isQuitting) {
       event.preventDefault();
@@ -396,9 +489,15 @@ function createExamWindow() {
   });
 
   mainWindow.on('closed', () => {
+    log('[ExamWindow] Window closed');
     mainWindow = null;
+    if (pageLoadTimeoutId) {
+      clearTimeout(pageLoadTimeoutId);
+      pageLoadTimeoutId = null;
+    }
   });
 
+  // ---- NAVIGATION HANDLER ----
   mainWindow.webContents.on('will-navigate', (event, url) => {
     try {
       const parsed = new URL(url);
@@ -418,66 +517,90 @@ function createExamWindow() {
     mainWindow.webContents.closeDevTools();
   });
 
-  mainWindow.webContents.on('did-fail-load', (_event, errorCode) => {
+  // ---- PAGE FAIL HANDLER ----
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDesc) => {
+    log(`[ExamWindow] did-fail-load: code=${errorCode}, desc=${errorDesc}`, 'WARN');
     if (errorCode === -105 || errorCode === -6) {
       mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(createOfflineHTML())}`);
     }
   });
 
-  // On login page - show update overlay and check for updates
+  // ---- LOAD START ----
+  mainWindow.webContents.on('did-start-loading', () => {
+    log('[ExamWindow] did-start-loading');
+  });
+
+  // ---- LOAD FINISH ----
   mainWindow.webContents.on('did-finish-load', () => {
     const url = mainWindow.webContents.getURL();
     log(`[ExamWindow] did-finish-load: ${url}`);
 
-    // Inject quit button on ALL pages (including login/update) since lockdown is never active there
-    injectQuitButton();
+    // Clear page load timeout since page loaded successfully
+    if (pageLoadTimeoutId) {
+      clearTimeout(pageLoadTimeoutId);
+      pageLoadTimeoutId = null;
+      log('[ExamWindow] Page load timeout cleared');
+    }
+  });
 
+  // ---- DOM READY - INJECT UI HERE (BUG FIX #1, #3) ----
+  mainWindow.webContents.on('dom-ready', () => {
+    const url = mainWindow.webContents.getURL();
+    log(`[ExamWindow] dom-ready: ${url}`);
+
+    // Inject quit button with delay to ensure DOM is fully ready
+    setTimeout(() => {
+      injectQuitButton();
+    }, CONFIG.DOM_READY_DELAY_MS);
+
+    // Check for updates on login page
     if (url.includes('/login') && !updateCheckDone) {
       updateCheckDone = true;
-      log('[App] On login page - checking for updates');
+      log('[App] On login page - starting update check');
       showUpdateOverlay();
 
-      // Set a safety timeout - always hide overlay after max 15 seconds
+      // Safety timeout - hide overlay after max 20 seconds
       const safetyTimeout = setTimeout(() => {
         log('[UpdateCheck] Safety timeout - hiding overlay');
         hideUpdateOverlay();
-      }, 15000);
+      }, 20000);
 
-      // Check for update using custom HTTP-based checker
       checkForUpdate().then((result) => {
         clearTimeout(safetyTimeout);
         if (result.hasUpdate) {
           latestVersion = result.latestVersion;
           updateDownloadUrl = result.downloadUrl;
-          log(`[UpdateCheck] Update found: v${latestVersion}, URL: ${updateDownloadUrl}`);
-          injectUpdateUI('available', 0, latestVersion, updateDownloadUrl);
+          log(`[UpdateCheck] Update found: v${latestVersion}`);
+          setTimeout(() => {
+            injectUpdateUI('available', 0, latestVersion, updateDownloadUrl);
+          }, CONFIG.DOM_READY_DELAY_MS);
         } else {
           log('[UpdateCheck] No update available');
-          injectUpdateUI('no_update', 100, app.getVersion(), '');
+          setTimeout(() => {
+            injectUpdateUI('no_update', 100, app.getVersion(), '');
+          }, CONFIG.DOM_READY_DELAY_MS);
         }
       }).catch((err) => {
         clearTimeout(safetyTimeout);
         log(`[UpdateCheck] Error: ${err.message}`, 'ERROR');
-        log('[UpdateCheck] Allowing app to continue (failsafe mode)');
         hideUpdateOverlay();
       });
     }
   });
 
+  // ---- NAVIGATE IN PAGE ----
   mainWindow.webContents.on('did-navigate-in-page', (_event, url) => {
     log(`[ExamWindow] did-navigate-in-page: ${url}`);
 
-    // Inject quit button on ALL non-exam pages (login, update, auth, etc.)
-    // Lockdown anti-cheat only activates on main exam pages
     const isLoginPage = url.includes('/login') || url.includes('/update');
     const isAuthPage = url.includes('/auth/') || url.includes('/callback');
 
     if (isLoginPage || isAuthPage) {
-      // Inject quit button on login/update/auth pages (no lockdown here)
-      injectQuitButton();
+      setTimeout(() => {
+        injectQuitButton();
+      }, CONFIG.DOM_READY_DELAY_MS);
     }
 
-    // Activate lockdown anti-cheat ONLY on main exam pages (after successful login)
     const isMainExamPage =
       (url.includes('/student/') && !url.includes('login')) ||
       (url.includes('/teacher/') && !url.includes('login')) ||
@@ -490,11 +613,12 @@ function createExamWindow() {
     }
   });
 
-  mainWindow.webContents.on('dom-ready', () => {
+  // ---- LOAD URL ----
+  mainWindow.loadURL(CONFIG.TARGET_URL).then(() => {
+    log('[ExamWindow] loadURL completed');
+  }).catch((err) => {
+    log(`[ExamWindow] loadURL failed: ${err.message}`, 'ERROR');
   });
-
-  mainWindow.loadURL(CONFIG.TARGET_URL);
-  log('[ExamWindow] Loading: ' + CONFIG.TARGET_URL);
 }
 
 function createOfflineHTML() {
@@ -515,91 +639,102 @@ button{background:#5F8D78;color:#fff;border:none;padding:14px 40px;border-radius
 // ============================================================
 // QUIT BUTTON
 // ============================================================
-let quitButtonInjected = false;
+let quitButtonState = 'idle';
 
 function injectQuitButton() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-
-  const removeScript = `
-    (function() {
-      var existingBtn = document.getElementById('lananh-exit-btn');
-      var existingDialog = document.getElementById('lananh-exit-dialog');
-      if (existingBtn) existingBtn.remove();
-      if (existingDialog) existingDialog.remove();
-    })();
-  `;
-  mainWindow.webContents.executeJavaScript(removeScript).catch(() => {});
-
   if (isLockdownActive) return;
 
-  const script = `
+  // Prevent duplicate injections
+  if (quitButtonState === 'injecting') return;
+  quitButtonState = 'injecting';
+
+  safeExecuteJavaScript(`
     (function() {
       var existingBtn = document.getElementById('lananh-exit-btn');
       var existingDialog = document.getElementById('lananh-exit-dialog');
       if (existingBtn) existingBtn.remove();
       if (existingDialog) existingDialog.remove();
+    })();
+  `).then(() => {
+    // Inject button and dialog
+    const script = `
+      (function() {
+        try {
+          var btn = document.createElement('div');
+          btn.id = 'lananh-exit-btn';
+          var btnEl = document.createElement('button');
+          btnEl.id = 'lananh-exit-trigger';
+          btnEl.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:2147483646;background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;border:none;border-radius:12px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 20px rgba(220,38,38,0.35);font-family:Segoe UI,Arial,sans-serif;';
+          btnEl.textContent = 'Thoat ung dung';
+          btnEl.addEventListener('click', showExitDialog);
+          btn.appendChild(btnEl);
+          document.body.appendChild(btn);
 
-      var btn = document.createElement('div');
-      btn.id = 'lananh-exit-btn';
-      btn.innerHTML = '<button id="lananh-exit-trigger" style="position:fixed;bottom:24px;right:24px;z-index:2147483646;background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;border:none;border-radius:12px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 20px rgba(220,38,38,0.35);font-family:Segoe UI,Arial,sans-serif;display:flex;align-items:center;gap:6px;opacity:0.9;transition:opacity 0.2s,transform 0.2s;" onmouseover="this.style.opacity=1;this.style.transform=scale(1.05)" onmouseout="this.style.opacity=0.9;this.style.transform=scale(1)">&#128687; Thoat ung dung</button>';
-      document.body.appendChild(btn);
+          var dialog = document.createElement('div');
+          dialog.id = 'lananh-exit-dialog';
+          dialog.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:2147483647;align-items:center;justify-content:center;';
 
-      var dialog = document.createElement('div');
-      dialog.id = 'lananh-exit-dialog';
-      dialog.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:2147483647;align-items:center;justify-content:center;';
-      dialog.innerHTML = '<div style="background:#0f172a;border-radius:20px;padding:32px;max-width:380px;width:90%;text-align:center;color:#f8fafc;font-family:Segoe UI,Arial,sans-serif;">' +
-        '<div style="width:52px;height:52px;background:rgba(220,38,38,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:24px;">&#128274;</div>' +
-        '<h2 style="font-size:17px;margin:0 0 6px;font-weight:700;">Thoat ung dung</h2>' +
-        '<p style="font-size:12px;color:#64748b;margin:0 0 20px;line-height:1.6;">Nhap mat khau de thoat.<br>Yeu cau xac nhan tu giao vien.</p>' +
-        '<input id="lananh-exit-pw" type="password" placeholder="Nhap mat khau..." style="width:100%;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:11px 14px;color:#f8fafc;font-size:14px;outline:none;box-sizing:border-box;" onkeydown="if(event.key===\'Enter\')document.getElementById(\'lananh-exit-submit\').click()">' +
-        '<p id="lananh-exit-err" style="color:#ef4444;font-size:12px;margin:8px 0 0;display:none;">Mat khau khong dung</p>' +
-        '<button id="lananh-exit-submit" style="width:100%;padding:11px;background:linear-gradient(135deg,#5F8D78,#4a6e5c);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;margin-top:14px;">Xac nhan thoat</button>' +
-        '<p style="font-size:11px;color:#475569;margin:14px 0 0;">Mat khau: 123456789</p>' +
-      '</div>';
-      document.body.appendChild(dialog);
+          var dialogContent = document.createElement('div');
+          dialogContent.style.cssText = 'background:#0f172a;border-radius:20px;padding:32px;max-width:380px;width:90%;text-align:center;color:#f8fafc;font-family:Segoe UI,Arial,sans-serif;';
+          dialogContent.innerHTML = '<div style="font-size:32px;margin-bottom:16px;">&#128274;</div>' +
+            '<h2 style="font-size:17px;margin:0 0 6px;font-weight:700;">Thoat ung dung</h2>' +
+            '<p style="font-size:12px;color:#64748b;margin:0 0 20px;line-height:1.6;">Nhap mat khau de thoat.<br>Yeu cau xac nhan tu giao vien.</p>' +
+            '<input id="lananh-exit-pw" type="password" placeholder="Nhap mat khau..." style="width:100%;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:11px 14px;color:#f8fafc;font-size:14px;outline:none;box-sizing:border-box;" onkeydown="if(event.key===\\'Enter\\')document.getElementById(\\'lananh-exit-submit\\').click()">' +
+            '<p id="lananh-exit-err" style="color:#ef4444;font-size:12px;margin:8px 0 0;display:none;">Mat khau khong dung</p>' +
+            '<button id="lananh-exit-submit" style="width:100%;padding:11px;background:linear-gradient(135deg,#5F8D78,#4a6e5c);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;margin-top:14px;">Xac nhan thoat</button>' +
+            '<p style="font-size:11px;color:#475569;margin:14px 0 0;">Mat khau: 123456789</p>';
 
-      btn.querySelector('button').addEventListener('click', function() {
-        dialog.style.display = 'flex';
-        setTimeout(function() {
-          var pwInput = document.getElementById('lananh-exit-pw');
-          if (pwInput) pwInput.focus();
-        }, 100);
-      });
+          dialog.appendChild(dialogContent);
+          document.body.appendChild(dialog);
 
-      dialog.addEventListener('click', function(e) {
-        if (e.target === dialog) {
-          dialog.style.display = 'none';
-          var pwField = document.getElementById('lananh-exit-pw');
-          var errField = document.getElementById('lananh-exit-err');
-          if (pwField) pwField.value = '';
-          if (errField) errField.style.display = 'none';
-        }
-      });
-
-      document.getElementById('lananh-exit-submit').addEventListener('click', function() {
-        var pw = document.getElementById('lananh-exit-pw').value;
-        if (window.electronAPI) {
-          window.electronAPI.verifyPassword(pw).then(function(r) {
-            if (r.success) {
+          dialog.addEventListener('click', function(e) {
+            if (e.target === dialog) {
               dialog.style.display = 'none';
-              // Quit app after successful password verification
-              window.electronAPI.quitApp();
-            } else {
-              var errEl = document.getElementById('lananh-exit-err');
-              var pwEl = document.getElementById('lananh-exit-pw');
-              if (errEl) errEl.style.display = 'block';
-              if (pwEl) pwEl.value = '';
+              var pwField = document.getElementById('lananh-exit-pw');
+              var errField = document.getElementById('lananh-exit-err');
+              if (pwField) pwField.value = '';
+              if (errField) errField.style.display = 'none';
             }
           });
+
+          document.getElementById('lananh-exit-submit').addEventListener('click', function() {
+            var pw = document.getElementById('lananh-exit-pw').value;
+            if (window.electronAPI) {
+              window.electronAPI.verifyPassword(pw).then(function(r) {
+                if (r.success) {
+                  dialog.style.display = 'none';
+                  window.electronAPI.quitApp();
+                } else {
+                  var errEl = document.getElementById('lananh-exit-err');
+                  var pwEl = document.getElementById('lananh-exit-pw');
+                  if (errEl) errEl.style.display = 'block';
+                  if (pwEl) pwEl.value = '';
+                }
+              });
+            }
+          });
+
+          window.showExitDialog = function() {
+            dialog.style.display = 'flex';
+            setTimeout(function() {
+              var pwInput = document.getElementById('lananh-exit-pw');
+              if (pwInput) pwInput.focus();
+            }, 100);
+          };
+
+          console.log('[LanAnh] Exit button injected');
+        } catch (e) {
+          console.error('[LanAnh] Exit button inject error:', e.message);
         }
-      });
+      })();
+    `;
 
-      console.log('[LanAnh] Exit button injected');
-    })();
-  `;
-
-  mainWindow.webContents.executeJavaScript(script).catch((e) => {
-    log(`[QuitButton] Inject failed: ${e.message}`, 'ERROR');
+    safeExecuteJavaScript(script).then(() => {
+      quitButtonState = 'injected';
+    }).catch(() => {
+      quitButtonState = 'idle';
+    });
   });
 }
 
@@ -617,7 +752,9 @@ function startForceFocus() {
       mainWindow.focus();
       mainWindow.moveTop();
       mainWindow.setSkipTaskbar(true);
-    } catch {}
+    } catch (e) {
+      log(`[ForceFocus] Error: ${e.message}`, 'WARN');
+    }
   }, 500);
   log('[Lockdown] Force focus started');
 }
@@ -636,13 +773,16 @@ function stopForceFocus() {
 function activateLockdown() {
   if (isLockdownActive) return;
 
-  // TEST ACCOUNT BYPASS: Skip lockdown for test account
   if (isTestAccountLoggedIn) {
     log('[Lockdown] SKIPPED - Test account bypass active');
-    injectQuitButton();
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('lockdown-deactivated');
-    }
+    safeExecuteJavaScript(`
+      (function() {
+        var btn = document.getElementById('lananh-exit-btn');
+        var dialog = document.getElementById('lananh-exit-dialog');
+        if (btn) btn.style.display = 'none';
+        if (dialog) dialog.style.display = 'none';
+      })();
+    `);
     return;
   }
 
@@ -653,17 +793,18 @@ function activateLockdown() {
   startForceFocus();
   log('[Lockdown] ACTIVATED');
 
+  safeExecuteJavaScript(`
+    (function() {
+      var btn = document.getElementById('lananh-exit-btn');
+      var dialog = document.getElementById('lananh-exit-dialog');
+      var overlay = document.getElementById('lananh-update-overlay');
+      if (btn) btn.style.display = 'none';
+      if (dialog) dialog.style.display = 'none';
+      if (overlay) overlay.style.display = 'none';
+    })();
+  `);
+
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.executeJavaScript(`
-      (function() {
-        var btn = document.getElementById('lananh-exit-btn');
-        var dialog = document.getElementById('lananh-exit-dialog');
-        var overlay = document.getElementById('lananh-update-overlay');
-        if (btn) btn.style.display = 'none';
-        if (dialog) dialog.style.display = 'none';
-        if (overlay) overlay.style.display = 'none';
-      })();
-    `);
     mainWindow.webContents.send('lockdown-activated');
   }
 }
@@ -679,7 +820,9 @@ function deactivateLockdown() {
     mainWindow.setKiosk(false);
     mainWindow.setFullScreen(false);
     mainWindow.webContents.send('lockdown-deactivated');
-    injectQuitButton();
+    setTimeout(() => {
+      injectQuitButton();
+    }, CONFIG.DOM_READY_DELAY_MS);
   }
 }
 
@@ -688,62 +831,22 @@ function deactivateLockdown() {
 // ============================================================
 function registerAllShortcuts() {
   const shortcuts = [
-    'CommandOrControl+Shift+I',
-    'CommandOrControl+Shift+J',
-    'CommandOrControl+Shift+C',
-    'CommandOrControl+Shift+R',
-    'CommandOrControl+R',
-    'F12',
-    'CommandOrControl+Shift+3',
-    'CommandOrControl+Shift+4',
-    'CommandOrControl+Option+I',
-    'CommandOrControl+Option+C',
-    'PrintScreen',
-    'Alt+Tab',
-    'Alt+F4',
-    'Alt+Escape',
-    'CommandOrControl+Alt+Delete',
-    'CommandOrControl+Shift+Esc',
-    'F11',
-    'F5',
-    'F3',
-    'F7',
-    'Super_L',
-    'Super_R',
-    'Super',
-    'Win',
-    'Win+L',
-    'Win+D',
-    'Win+E',
-    'Win+M',
-    'Win+Tab',
-    'Win+Ctrl+D',
-    'Win+Ctrl+Shift+B',
-    'CommandOrControl+Tab',
-    'CommandOrControl+Shift+5',
+    'CommandOrControl+Shift+I', 'CommandOrControl+Shift+J', 'CommandOrControl+Shift+C',
+    'CommandOrControl+Shift+R', 'CommandOrControl+R', 'F12', 'CommandOrControl+Shift+3',
+    'CommandOrControl+Shift+4', 'CommandOrControl+Option+I', 'CommandOrControl+Option+C',
+    'PrintScreen', 'Alt+Tab', 'Alt+F4', 'Alt+Escape', 'CommandOrControl+Alt+Delete',
+    'CommandOrControl+Shift+Esc', 'F11', 'F5', 'F3', 'F7', 'Super_L', 'Super_R', 'Super',
+    'Win', 'Win+L', 'Win+D', 'Win+E', 'Win+M', 'Win+Tab', 'Win+Ctrl+D', 'Win+Ctrl+Shift+B',
+    'CommandOrControl+Tab', 'CommandOrControl+Shift+5',
   ];
 
   if (process.platform === 'darwin') {
     shortcuts.push(
-      'Command+Q',
-      'Command+Tab',
-      'Command+Space',
-      'Command+`',
-      'Command+Shift+3',
-      'Command+Shift+4',
-      'Command+Shift+5',
-      'Control+Command+Q',
-      'Control+Tab',
-      'Command+Option+Escape',
-      'Command+Up',
-      'Command+Down',
-      'Command+H',
-      'Command+M',
-      'Command+Option+Control+Shift+L',
-      'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
-      'Command+Ctrl+Q',
-      'Command+Ctrl+D',
-      'Command+Ctrl+F',
+      'Command+Q', 'Command+Tab', 'Command+Space', 'Command+`', 'Command+Shift+3',
+      'Command+Shift+4', 'Command+Shift+5', 'Control+Command+Q', 'Control+Tab',
+      'Command+Option+Escape', 'Command+Up', 'Command+Down', 'Command+H', 'Command+M',
+      'Command+Option+Control+Shift+L', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
+      'Command+Ctrl+Q', 'Command+Ctrl+D', 'Command+Ctrl+F',
     );
   }
 
@@ -758,7 +861,9 @@ function registerAllShortcuts() {
             mainWindow.setFullScreen(true);
             mainWindow.focus();
             mainWindow.moveTop();
-          } catch {}
+          } catch (e) {
+            log(`[Blocked] Focus restore error: ${e.message}`, 'WARN');
+          }
         }
       });
     } catch (e) {
@@ -799,11 +904,8 @@ ipcMain.handle('exit:verify-password', (_event, password) => {
   return { success: false };
 });
 
-// Custom update: open installer download URL in browser
 ipcMain.handle('update:start-download', (_event, url) => {
   log(`[Update] Starting download from: ${url}`);
-
-  // Validate URL before opening
   try {
     const parsedUrl = new URL(url);
     if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
@@ -811,29 +913,13 @@ ipcMain.handle('update:start-download', (_event, url) => {
       return { success: false, error: 'Invalid URL protocol' };
     }
 
-    // Use shell.openExternal with proper validation
     shell.openExternal(url).then(() => {
       log('[Update] Installer opened in browser');
-      // Show ready state - user will run the installer themselves
       if (mainWindow && !mainWindow.isDestroyed()) {
         injectUpdateUI('ready', 100, latestVersion, '');
       }
     }).catch((err) => {
       log(`[Update] Failed to open URL: ${err.message}`, 'ERROR');
-      // Failsafe: try to show manual download instructions
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.executeJavaScript(`
-          (function() {
-            var existing = document.getElementById('lananh-update-overlay');
-            if (existing) existing.remove();
-            var overlay = document.createElement('div');
-            overlay.id = 'lananh-update-overlay';
-            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:Segoe UI,sans-serif;';
-            overlay.innerHTML = '<div style="background:#fff;border-radius:16px;padding:32px;max-width:400px;text-align:center;"><h2 style="color:#dc2626;margin:0 0 12px;">Loi tai file</h2><p style="color:#666;margin:0 0 16px;">Vui long tai file thu cong tai:<br><a href="${url}" style="color:#5F8D78;word-break:break-all;">${url}</a></p><button onclick="document.getElementById(\\\'lananh-update-overlay\\\').remove()" style="padding:10px 24px;background:#5F8D78;color:#fff;border:none;border-radius:8px;cursor:pointer;">Dong</button></div>';
-            document.body.appendChild(overlay);
-          })();
-        `).catch(() => {});
-      }
     });
     return { success: true };
   } catch (err) {
@@ -842,15 +928,8 @@ ipcMain.handle('update:start-download', (_event, url) => {
   }
 });
 
-ipcMain.handle('update:install-restart', () => {
-  log('[Update] Install and restart requested - opening installer');
-  // The installer was already opened via browser, so just hide the overlay
-  hideUpdateOverlay();
-  return { success: true };
-});
-
 ipcMain.handle('update:complete', () => {
-  log('[App] Update skipped, proceeding to exam');
+  log('[App] Update dismissed, proceeding');
   hideUpdateOverlay();
   return { success: true };
 });
@@ -864,7 +943,9 @@ ipcMain.handle('focus:violation', () => {
       mainWindow.setFullScreen(true);
       mainWindow.focus();
       mainWindow.moveTop();
-    } catch {}
+    } catch (e) {
+      log(`[Focus] Restore error: ${e.message}`, 'WARN');
+    }
     mainWindow.webContents.send('focus-violation', { count: focusViolationCount });
   }
   return { count: focusViolationCount };
@@ -873,7 +954,7 @@ ipcMain.handle('focus:violation', () => {
 ipcMain.handle('lockdown:get-status', () => ({
   active: isLockdownActive,
   focusViolations: focusViolationCount,
-  displayCount: getDisplayCount(),
+  displayCount: screen.getAllDisplays().length,
   platform: process.platform,
 }));
 
@@ -893,62 +974,6 @@ ipcMain.handle('app:get-version', () => ({
   name: 'Lan Anh Exam System',
 }));
 
-// Check if email is test account
-ipcMain.handle('auth:check-test-account', (_event, email) => {
-  const isTestAccount = email && email.toLowerCase() === CONFIG.TEST_ACCOUNT_EMAIL.toLowerCase();
-  log(`[Auth] Checking test account: ${email} -> ${isTestAccount ? 'BYPASS' : 'Normal'}`);
-  return { isTestAccount };
-});
-
-// Verify login credentials (for test account bypass)
-ipcMain.handle('auth:verify-credentials', (_event, email, password) => {
-  const isTestAccount = email && email.toLowerCase() === CONFIG.TEST_ACCOUNT_EMAIL.toLowerCase();
-  const isValid = isTestAccount && password === CONFIG.TEST_ACCOUNT_PASSWORD;
-  log(`[Auth] Verify credentials: ${email} -> ${isValid ? 'SUCCESS' : 'FAILED'}`);
-  return { success: isValid, isTestAccount };
-});
-
-// Set test account login state (bypass lockdown)
-ipcMain.handle('auth:set-test-account-login', (_event, isTestAccount) => {
-  isTestAccountLoggedIn = isTestAccount;
-  log(`[Auth] Test account login state: ${isTestAccount}`);
-  return { success: true };
-});
-
-// Login timeout management
-ipcMain.handle('auth:start-login-timeout', () => {
-  if (loginTimeoutId) {
-    clearTimeout(loginTimeoutId);
-  }
-  loginTimeoutId = setTimeout(() => {
-    log('[Auth] Login timeout reached (10s)', 'WARN');
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.executeJavaScript(`
-        (function() {
-          var el = document.querySelector('[class*="spinner"], [class*="Loader"], [class*="loading"]');
-          if (el) el.remove();
-          var msg = document.createElement('div');
-          msg.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;z-index:9999;';
-          msg.textContent = 'Ket noi cham. Vui long thu lai.';
-          document.body.appendChild(msg);
-          setTimeout(() => msg.remove(), 5000);
-        })();
-      `).catch(() => {});
-    }
-  }, CONFIG.LOGIN_TIMEOUT_MS);
-  log('[Auth] Login timeout started');
-  return { success: true };
-});
-
-ipcMain.handle('auth:clear-login-timeout', () => {
-  if (loginTimeoutId) {
-    clearTimeout(loginTimeoutId);
-    loginTimeoutId = null;
-    log('[Auth] Login timeout cleared');
-  }
-  return { success: true };
-});
-
 ipcMain.handle('app:quit', () => {
   if (isLockdownActive && !isQuitting) {
     return { success: false, reason: 'lockdown_active' };
@@ -966,9 +991,8 @@ ipcMain.handle('app:quit', () => {
   return { success: true };
 });
 
-// Force quit - bypasses lockdown (called after password verification)
 ipcMain.handle('app:quit-force', () => {
-  log('[App] Force quit requested (password verified)');
+  log('[App] Force quit requested');
   isQuitting = true;
   deactivateLockdown();
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -978,6 +1002,50 @@ ipcMain.handle('app:quit-force', () => {
     mainWindow.close();
   }
   app.quit();
+  return { success: true };
+});
+
+ipcMain.handle('auth:check-test-account', (_event, email) => {
+  const isTestAccount = email && email.toLowerCase() === CONFIG.TEST_ACCOUNT_EMAIL.toLowerCase();
+  log(`[Auth] Check test account: ${email} -> ${isTestAccount ? 'BYPASS' : 'Normal'}`);
+  return { isTestAccount };
+});
+
+ipcMain.handle('auth:verify-credentials', (_event, email, password) => {
+  const isTestAccount = email && email.toLowerCase() === CONFIG.TEST_ACCOUNT_EMAIL.toLowerCase();
+  const isValid = isTestAccount && password === CONFIG.TEST_ACCOUNT_PASSWORD;
+  log(`[Auth] Verify: ${email} -> ${isValid ? 'SUCCESS' : 'FAILED'}`);
+  return { success: isValid, isTestAccount };
+});
+
+ipcMain.handle('auth:set-test-account-login', (_event, isTestAccount) => {
+  isTestAccountLoggedIn = isTestAccount;
+  log(`[Auth] Test account login state: ${isTestAccount}`);
+  return { success: true };
+});
+
+ipcMain.handle('auth:start-login-timeout', () => {
+  if (loginTimeoutId) clearTimeout(loginTimeoutId);
+  loginTimeoutId = setTimeout(() => {
+    log('[Auth] Login timeout reached', 'WARN');
+    safeExecuteJavaScript(`
+      (function() {
+        var msg = document.createElement('div');
+        msg.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;z-index:9999;';
+        msg.textContent = 'Ket noi cham. Vui long thu lai.';
+        document.body.appendChild(msg);
+        setTimeout(() => msg.remove(), 5000);
+      })();
+    `);
+  }, CONFIG.LOGIN_TIMEOUT_MS);
+  return { success: true };
+});
+
+ipcMain.handle('auth:clear-login-timeout', () => {
+  if (loginTimeoutId) {
+    clearTimeout(loginTimeoutId);
+    loginTimeoutId = null;
+  }
   return { success: true };
 });
 
@@ -1009,15 +1077,14 @@ app.whenReady().then(() => {
     app.quit();
   });
 
-  if (isMultiMonitor()) {
+  // Multi-monitor check
+  const displayCount = screen.getAllDisplays().length;
+  log(`[App] Display count: ${displayCount}`);
+
+  if (displayCount > 1) {
     const errWin = new BrowserWindow({
-      width: 540,
-      height: 340,
-      resizable: false,
-      frame: true,
-      center: true,
-      backgroundColor: '#f5f9f7',
-      title: 'Canh bao - Lan Anh',
+      width: 540, height: 340, resizable: false, frame: true,
+      center: true, backgroundColor: '#f5f9f7', title: 'Canh bao - Lan Anh',
       webPreferences: { nodeIntegration: false, contextIsolation: true },
     });
     errWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTYPE html>
@@ -1044,10 +1111,12 @@ p{color:#5a7a6a;font-size:14px;line-height:1.7;}
 });
 
 app.on('window-all-closed', () => {
+  log('[App] window-all-closed');
   if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('will-quit', () => {
+  log('[App] will-quit');
   globalShortcut.unregisterAll();
 });
 
@@ -1070,7 +1139,7 @@ app.on('before-quit', (event) => {
         type: 'warning',
         title: 'Lan Anh Exam System',
         message: 'Khong the thoat trong khi dang thi.',
-        detail: `Vui long hoan thanh bai thi truoc khi dong ung dung.\n\nThoat khan cap: Ctrl + Alt + Shift + L\nMat khau: 123456789`,
+        detail: 'Vui long hoan thanh bai thi truoc khi dong ung dung.\n\nThoat khan cap: Ctrl + Alt + Shift + L\nMat khau: 123456789',
         buttons: ['OK'],
       });
     }
